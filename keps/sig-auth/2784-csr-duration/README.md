@@ -145,8 +145,9 @@ type CertificateSigningRequestSpec struct {
   // and notAfter fields in the issued certificate to determine the actual duration.
   //
   // The v1.22+ in-tree implementations of the well-known Kubernetes signers will
-  // honor this field as long as the requested duration is not later than the maximum
-  // duration they will honor.
+  // honor this field as long as the requested duration is not greater than the
+  // maximum duration they will honor per the --cluster-signing-duration CLI
+  // flag to the Kubernetes controller manager.
   //
   // Certificate signers may not honor this field for various reasons:
   //
