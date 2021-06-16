@@ -180,26 +180,20 @@ appropriate minimum to prevent accidental DOS against the CSR API.  Furthermore,
 
 TODO spec is immutable after creation, changes are silently dropped
 TODO jordan conversation re: upgrades and downgrades
+TODO beta no feature gate
 
 ### Test Plan
 
-<!--
-**Note:** *Not required until targeted at a release.*
+Unit tests covering:
 
-Consider the following in developing a test plan for this enhancement:
-- Will there be e2e and integration tests, in addition to unit tests?
-- How will it be tested in isolation vs with other components?
+1. Validation logic for minimum duration
+2. `pkg/controller/certificates/authority.PermissiveSigningPolicy` updates to handle `expirationSeconds`
 
-No need to outline all of the test cases, just the general strategy. Anything
-that would count as tricky in the implementation, and anything particularly
-challenging to test, should be called out.
+Integration test covering:
 
-All code is expected to have adequate tests (eventually with coverage
-expectations). Please adhere to the [Kubernetes testing guidelines][testing-guidelines]
-when drafting this test plan.
-
-[testing-guidelines]: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md
--->
+1. Creating and approving CSRs and asserting that certificate signer controllers such as
+   `pkg/controller/certificates/signer.NewKubeAPIServerClientCSRSigningController` honor
+   `spec.expirationSeconds` by checking the duration of the issued certificate.
 
 ### Graduation Criteria
 
