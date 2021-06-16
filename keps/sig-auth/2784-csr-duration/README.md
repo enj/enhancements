@@ -181,6 +181,7 @@ appropriate minimum to prevent accidental DOS against the CSR API.  Furthermore,
 TODO spec is immutable after creation, changes are silently dropped
 TODO jordan conversation re: upgrades and downgrades
 TODO beta no feature gate
+TODO note that signers are multi threaded
 
 ### Test Plan
 
@@ -197,65 +198,24 @@ Integration test covering:
 
 ### Graduation Criteria
 
-<!--
-**Note:** *Not required until targeted at a release.*
-
-Define graduation milestones.
-
-These may be defined in terms of API maturity, or as something else. The KEP
-should keep this high-level with a focus on what signals will be looked at to
-determine graduation.
-
-Consider the following in developing the graduation criteria for this enhancement:
-- [Maturity levels (`alpha`, `beta`, `stable`)][maturity-levels]
-- [Deprecation policy][deprecation-policy]
-
-Clearly define what graduation means by either linking to the [API doc
-definition](https://kubernetes.io/docs/concepts/overview/kubernetes-api/#api-versioning)
-or by redefining what graduation means.
-
-In general we try to use the same stages (alpha, beta, GA), regardless of how the
-functionality is accessed.
-
-[maturity-levels]: https://git.k8s.io/community/contributors/devel/sig-architecture/api_changes.md#alpha-beta-and-stable-versions
-[deprecation-policy]: https://kubernetes.io/docs/reference/using-api/deprecation-policy/
-
-Below are some examples to consider, in addition to the aforementioned [maturity levels][maturity-levels].
-
 #### Alpha
 
-- Feature implemented behind a feature flag
-- Initial e2e tests completed and enabled
+This design will start at the beta phase and the functionality will always be enabled
 
 #### Beta
 
-- Gather feedback from developers and surveys
-- Complete features A, B, C
-- Additional tests are in Testgrid and linked in KEP
+- Feature fully implemented as described in this design
+- Unit tests completed and enabled
+- Integration test completed and enabled
+- [CSR docs](https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests) updated with details about usage of the `expirationSeconds` field
 
 #### GA
 
-- N examples of real-world usage
-- N installs
-- More rigorous forms of testing—e.g., downgrade tests and scalability tests
-- Allowing time for feedback
+- Confirm with cert-manager that the new functionality addresses their use case
+- Wait one release after beta to allow bugs to be reported
 
-**Note:** Generally we also wait at least two releases between beta and
-GA/stable, because there's no opportunity for user feedback, or even bug reports,
-in back-to-back releases.
-
-**For non-optional features moving to GA, the graduation criteria must include
-[conformance tests].**
-
-[conformance tests]: https://git.k8s.io/community/contributors/devel/sig-architecture/conformance-tests.md
-
-#### Deprecation
-
-- Announce deprecation and support policy of the existing flag
-- Two versions passed since introducing the functionality that deprecates the flag (to address version skew)
-- Address feedback on usage/changed behavior, provided on GitHub issues
-- Deprecate the flag
--->
+The existing conformance tests for the certificates API (`test/e2e/auth/certificates.go`)
+are sufficient coverage as the new functionality is optional.
 
 ### Upgrade / Downgrade Strategy
 
@@ -324,15 +284,12 @@ specified and cases where it is left unspecified.
 
 ###### How can a rollout or rollback fail? Can it impact already running workloads?
 
-<!--
-Try to be as paranoid as possible - e.g., what if some components will restart
-mid-rollout?
-
-Be sure to consider highly-available clusters, where, for example,
-feature flags will be enabled on some API servers and not others during the
-rollout. Similarly, consider large clusters and how enablement/disablement
-will rollout across nodes.
--->
+Since it is optional for signers to honor `spec.expirationSeconds`, this design
+is fully tolerant of API server and controller manager rollouts/rollbacks that
+fail or get wedged in a partial state.  The worse case scenario is that the
+`spec.expirationSeconds` field is ignored, which mimics the status quo.  Clients
+must always check the duration of the issued certificate to determine if the
+requested `spec.expirationSeconds` was honored.
 
 ###### What specific metrics should inform a rollback?
 
@@ -340,6 +297,7 @@ N/A
 
 ###### Were upgrade and rollback tested? Was the upgrade->downgrade->upgrade path tested?
 
+// TODO //
 <!--
 Describe manual testing that was done and the outcomes.
 Longer term, we may want to require automated upgrade/rollback tests, but we
