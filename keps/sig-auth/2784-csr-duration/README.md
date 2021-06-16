@@ -1,14 +1,3 @@
-<!--
-
-
-```
-<<[UNRESOLVED optional short context or usernames ]>>
-Stuff that is being argued.
-<<[/UNRESOLVED]>>
-```
-
-
--->
 # KEP-2784: CSR Duration
 
 <!-- toc -->
@@ -98,14 +87,9 @@ that can be used to request a particular duration.
 
 ## Proposal
 
-<!--
-This is where we get down to the specifics of what the proposal actually is.
-This should have enough detail that reviewers can understand exactly what
-you're proposing, but should not include things like API designs or
-implementation. What is the desired outcome and how do we measure success?.
-The "Design Details" section below is for the real
-nitty-gritty.
--->
+Add a new field to the `spec` of the certificate signing requests API called
+`expirationSeconds` that allows a client to request a desired duration for the
+issued certificate.
 
 ### User Stories (Optional)
 
@@ -127,35 +111,61 @@ nitty-gritty.
 
 ### Notes/Constraints/Caveats (Optional)
 
-<!--
-What are the caveats to the proposal?
-What are some important details that didn't come across above?
-Go in to as much detail as necessary here.
-This might be a good place to talk about core concepts and how they relate.
--->
+N/A
 
 ### Risks and Mitigations
 
-<!--
-What are the risks of this proposal, and how do we mitigate? Think broadly.
-For example, consider both security and how this will impact the larger
-Kubernetes ecosystem.
+This functionality will serve to reduce risk and increase security in the
+Kubernetes ecosystem by helping client migrate away from long lived certificates.
 
-How will security be reviewed, and by whom?
-
-How will UX be reviewed, and by whom?
-
-Consider including folks who also work outside the SIG or subproject.
--->
+In the worst case scenario, the new field will be ignored, which does not reduce
+security from the status quo.
 
 ## Design Details
 
-<!--
-This section should contain enough information that the specifics of your
-change are understandable. This may include API specs (though not always
-required) or even code snippets. If there's any ambiguity about HOW your
-proposal will be implemented, this is the place to discuss them.
--->
+This design is centered around a change to the `CertificateSigningRequestSpec`
+structs found in the `k8s.io/api/certificates/v1` and `k8s.io/api/certificates/v1beta1`
+packages.
+
+A new optional `ExpirationSeconds` field will be added to this struct.  The go
+doc comment describes the behavior of this field.
+
+```go
+// CertificateSigningRequestSpec contains the certificate request.
+type CertificateSigningRequestSpec struct {
+  // ... other fields omitted for brevity
+
+  // go doc omitted for brevity
+  SignerName string `json:"signerName" protobuf:"bytes,7,opt,name=signerName"`
+
+  // expirationSeconds is the requested duration of validity of the issued
+  // certificate. The certificate signer may issue a certificate with a different
+  // validity duration so a client must check the delta between the notBefore and
+  // and notAfter fields in the issued certificate to determine the actual duration.
+  //
+  // The in-tree implementations of the well-known Kubernetes signers will honor
+  // this field as long as the requested duration is not later than the maximum
+  // duration they will honor.
+  //
+  // The minimum valid value for expirationSeconds is 600, i.e. 10 minutes.
+  //
+  // +optional
+  ExpirationSeconds *uint32 `json:"expirationSeconds,omitempty" protobuf:"varint,8,opt,name=expirationSeconds"`
+
+  // go doc omitted for brevity
+  Usages []KeyUsage `json:"usages,omitempty" protobuf:"bytes,5,opt,name=usages"`
+
+  // ... other fields omitted for brevity
+}
+```
+
+The name `expirationSeconds` was chosen to match existing art in the token request
+API.  Similarly, the minimum valid duration was chosen to match the token request
+API as well.  As this is a security related field, individuals may be encouraged
+to set this value to the minimum valid value to maximize security.  Since a certificate
+with a short lifetime will require frequent rotation, `10` minutes seems like an
+appropriate minimum to prevent accidental DOS against the CSR API.  Furthermore,
+`10` minutes is a short enough lifetime that revocation is not of concern.
 
 ### Test Plan
 
@@ -251,7 +261,7 @@ enhancement:
   cluster required to make on upgrade, in order to maintain previous behavior?
 - What changes (in invocations, configurations, API use, etc.) is an existing
   cluster required to make on upgrade, in order to make use of the enhancement?
--->
+  -->
 
 ### Version Skew Strategy
 
@@ -266,7 +276,7 @@ enhancement:
   when this feature is used?
 - Will any other components on the node change? For example, changes to CSI,
   CRI or CNI may require updating that component before the kubelet.
--->
+  -->
 
 ## Production Readiness Review Questionnaire
 
@@ -471,7 +481,7 @@ and creating new ones, as well as about cluster-level services (e.g. DNS):
     - Usage description:
       - Impact of its outage on the feature:
       - Impact of its degraded performance or high-error rates on the feature:
--->
+      -->
 
 ### Scalability
 
@@ -498,7 +508,7 @@ Focusing mostly on:
     (e.g. update of object X triggers new updates of object Y)
   - periodic API calls to reconcile state (e.g. periodic fetching state,
     heartbeats, leader election, etc.)
--->
+    -->
 
 ###### Will enabling / using this feature result in introducing new API types?
 
@@ -574,7 +584,7 @@ For each of them, fill in the following information by copying the below templat
       levels that could help debug the issue?
       Not required until feature graduated to beta.
     - Testing: Are there any tests for failure mode? If not, describe why.
--->
+    -->
 
 ###### What steps should be taken if SLOs are not being met to determine the problem?
 
