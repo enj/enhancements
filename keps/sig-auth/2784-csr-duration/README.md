@@ -569,30 +569,17 @@ This through this both in small and large cases, again with respect to the
 
 ### Troubleshooting
 
-<!--
-This section must be completed when targeting beta to a release.
-
-The Troubleshooting section currently serves the `Playbook` role. We may consider
-splitting it into a dedicated `Playbook` document (potentially with some monitoring
-details). For now, we leave it here.
--->
+To aid in debugging, the printing and describe functionality of `kubectl` will be
+enhanced to show the `spec.expirationSeconds` field as a human friendly duration.
+As before, issued certificates can be printed via tools such as `openssl`.
 
 ###### How does this feature react if the API server and/or etcd is unavailable?
 
+The semantics of the Kubernetes CSR API do not change in this regard.
+
 ###### What are other known failure modes?
 
-<!--
-For each of them, fill in the following information by copying the below template:
-  - [Failure mode brief description]
-    - Detection: How can it be detected via metrics? Stated another way:
-      how can an operator troubleshoot without logging into a master or worker node?
-    - Mitigations: What can be done to stop the bleeding, especially for already
-      running user workloads?
-    - Diagnostics: What are the useful log messages and their required logging
-      levels that could help debug the issue?
-      Not required until feature graduated to beta.
-    - Testing: Are there any tests for failure mode? If not, describe why.
-    -->
+N/A
 
 ###### What steps should be taken if SLOs are not being met to determine the problem?
 
