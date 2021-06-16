@@ -178,11 +178,6 @@ and signing is asynchronous which necessitates a buffer), `10` minutes seems lik
 appropriate minimum to prevent accidental DOS against the CSR API.  Furthermore,
 `10` minutes is a short enough lifetime that revocation is not of concern.
 
-TODO spec is immutable after creation, changes are silently dropped
-TODO jordan conversation re: upgrades and downgrades
-TODO beta no feature gate
-TODO note that signers are multi threaded
-
 ### Test Plan
 
 Unit tests covering:
@@ -200,7 +195,13 @@ Integration test covering:
 
 #### Alpha
 
-This design will start at the beta phase and the functionality will always be enabled
+- This design will start at the beta phase and the functionality will always be enabled
+- There will be no feature gate associated with this design
+
+This design represents a small, optional change to an existing GA API.  Thus it
+prioritizes rollout speed to allow clients to start using this functionality
+sooner (to reap potential security benefits) at the cost of data durability
+during version skews (discussed below).
 
 #### Beta
 
@@ -218,6 +219,12 @@ The existing conformance tests for the certificates API (`test/e2e/auth/certific
 are sufficient coverage as the new functionality is optional.
 
 ### Upgrade / Downgrade Strategy
+
+TODO Data durability
+TODO spec is immutable after creation, changes are silently dropped
+TODO jordan conversation re: upgrades and downgrades
+TODO beta no feature gate
+TODO note that signers are multi threaded
 
 <!--
 If applicable, how will the component be upgraded and downgraded? Make sure
