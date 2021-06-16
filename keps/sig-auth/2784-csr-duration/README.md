@@ -288,82 +288,39 @@ enhancement:
 
 ## Production Readiness Review Questionnaire
 
-<!--
-
-Production readiness reviews are intended to ensure that features merging into
-Kubernetes are observable, scalable and supportable; can be safely operated in
-production environments, and can be disabled or rolled back in the event they
-cause increased failures in production. See more in the PRR KEP at
-https://git.k8s.io/enhancements/keps/sig-architecture/1194-prod-readiness.
-
-The production readiness review questionnaire must be completed and approved
-for the KEP to move to `implementable` status and be included in the release.
-
-In some cases, the questions below should also have answers in `kep.yaml`. This
-is to enable automation to verify the presence of the review, and to reduce review
-burden and latency.
-
-The KEP must have a approver from the
-[`prod-readiness-approvers`](http://git.k8s.io/enhancements/OWNERS_ALIASES)
-team. Please reach out on the
-[#prod-readiness](https://kubernetes.slack.com/archives/CPNHUMN74) channel if
-you need any help or guidance.
--->
-
 ### Feature Enablement and Rollback
-
-<!--
-This section must be completed when targeting alpha to a release.
--->
 
 ###### How can this feature be enabled / disabled in a live cluster?
 
-<!--
-Pick one of these and delete the rest.
--->
-
-- [ ] Feature gate (also fill in values in `kep.yaml`)
-  - Feature gate name:
-  - Components depending on the feature gate:
-- [ ] Other
+- [x] Other
   - Describe the mechanism:
+      As written above, this functionality will be enabled by default with no configuration options.
   - Will enabling / disabling the feature require downtime of the control
     plane?
+      N/A
   - Will enabling / disabling the feature require downtime or reprovisioning
     of a node? (Do not assume `Dynamic Kubelet Config` feature is enabled).
+      N/A
 
 ###### Does enabling the feature change any default behavior?
 
-<!--
-Any change of default behavior may be surprising to users or break existing
-automations, so be extremely careful here.
--->
+Existing clients would continue to leave `spec.expirationSeconds` unset and thus
+would observe no difference in behavior.
 
 ###### Can the feature be disabled once it has been enabled (i.e. can we roll back the enablement)?
 
-<!--
-Describe the consequences on existing workloads (e.g., if this is a runtime
-feature, can it break the existing applications?).
-
-NOTE: Also set `disable-supported` to `true` or `false` in `kep.yaml`.
--->
+N/A
 
 ###### What happens if we reenable the feature if it was previously rolled back?
 
+N/A
+
 ###### Are there any tests for feature enablement/disablement?
 
-<!--
-The e2e framework does not currently support enabling or disabling feature
-gates. However, unit tests in each component dealing with managing data, created
-with and without the feature, are necessary. At the very least, think about
-conversion tests if API types are being modified.
--->
+Unit and integration tests will cover cases where `spec.expirationSeconds` is
+specified and cases where it is left unspecified.
 
 ### Rollout, Upgrade and Rollback Planning
-
-<!--
-This section must be completed when targeting beta to a release.
--->
 
 ###### How can a rollout or rollback fail? Can it impact already running workloads?
 
@@ -379,10 +336,7 @@ will rollout across nodes.
 
 ###### What specific metrics should inform a rollback?
 
-<!--
-What signals should users be paying attention to when the feature is young
-that might indicate a serious problem?
--->
+N/A
 
 ###### Were upgrade and rollback tested? Was the upgrade->downgrade->upgrade path tested?
 
@@ -394,42 +348,21 @@ are missing a bunch of machinery and tooling and can't do that now.
 
 ###### Is the rollout accompanied by any deprecations and/or removals of features, APIs, fields of API types, flags, etc.?
 
-<!--
-Even if applying deprecation policies, they may still surprise some users.
--->
+N/A
 
 ### Monitoring Requirements
 
-<!--
-This section must be completed when targeting beta to a release.
--->
-
 ###### How can an operator determine if the feature is in use by workloads?
 
-<!--
-Ideally, this should be a metric. Operations against the Kubernetes API (e.g.,
-checking if there are objects with field X set) may be a last resort. Avoid
-logs or events for this purpose.
--->
+Use `kubectl` to determine if CSRs with `spec.expirationSeconds` set are being
+created.  Audit logging could also be used to determine this.
 
 ###### How can someone using this feature know that it is working for their instance?
 
-<!--
-For instance, if this is a pod-related feature, it should be possible to determine if the feature is functioning properly
-for each individual pod.
-Pick one more of these and delete the rest.
-Please describe all items visible to end users below with sufficient detail so that they can verify correct enablement
-and operation of this feature.
-Recall that end users cannot usually observe component logs or access metrics.
--->
-
-- [ ] Events
-  - Event Reason: 
-- [ ] API .status
-  - Condition name: 
-  - Other field: 
-- [ ] Other (treat as last resort)
-  - Details:
+- [x] API .status
+  - Condition name: Approved=true
+  - Other field:
+      Check that the issued certificate in `.status.certificate` has the correct duration
 
 ###### What are the reasonable SLOs (Service Level Objectives) for the enhancement?
 
@@ -463,109 +396,63 @@ Pick one more of these and delete the rest.
 
 ###### Are there any missing metrics that would be useful to have to improve observability of this feature?
 
-<!--
-Describe the metrics themselves and the reasons why they weren't added (e.g., cost,
-implementation difficulties, etc.).
--->
+N/A
 
 ### Dependencies
 
-<!--
-This section must be completed when targeting beta to a release.
--->
-
 ###### Does this feature depend on any specific services running in the cluster?
 
-<!--
-Think about both cluster-level services (e.g. metrics-server) as well
-as node-level agents (e.g. specific version of CRI). Focus on external or
-optional services that are needed. For example, if this feature depends on
-a cloud provider API, or upon an external software-defined storage or network
-control plane.
-
-For each of these, fill in the following—thinking about running existing user workloads
-and creating new ones, as well as about cluster-level services (e.g. DNS):
-  - [Dependency name]
-    - Usage description:
-      - Impact of its outage on the feature:
-      - Impact of its degraded performance or high-error rates on the feature:
-      -->
+- [API Server]
+  - Usage description: hosts the CSR API
+    - Impact of its outage on the feature: CSR API will be unavailable
+    - Impact of its degraded performance or high-error rates on the feature:
+      + Signers may have difficulty issuing certificates
+      + Clients may have to wait a long time for certificates to be issued
+- [etcd]
+  - Usage description: stores data for the CSR API
+    - Impact of its outage on the feature: CSR API will be unavailable
+    - Impact of its degraded performance or high-error rates on the feature:
+      + Signers may have difficulty issuing certificates
+      + Clients may have to wait a long time for certificates to be issued
+- [Kubernetes controller manager]
+  - Usage description: hosts the in-tree signer controllers
+    - Impact of its outage on the feature: in-tree signers will be unavailable
+    - Impact of its degraded performance or high-error rates on the feature:
+      + Clients may have to wait a long time for certificates to be issued
 
 ### Scalability
 
-<!--
-For alpha, this section is encouraged: reviewers should consider these questions
-and attempt to answer them.
-
-For beta, this section is required: reviewers must answer these questions.
-
-For GA, this section is required: approvers should be able to confirm the
-previous answers based on experience in the field.
--->
-
 ###### Will enabling / using this feature result in any new API calls?
 
-<!--
-Describe them, providing:
-  - API call type (e.g. PATCH pods)
-  - estimated throughput
-  - originating component(s) (e.g. Kubelet, Feature-X-controller)
-Focusing mostly on:
-  - components listing and/or watching resources they didn't before
-  - API calls that may be triggered by changes of some Kubernetes resources
-    (e.g. update of object X triggers new updates of object Y)
-  - periodic API calls to reconcile state (e.g. periodic fetching state,
-    heartbeats, leader election, etc.)
-    -->
+An increase in CSR CRUD operations as clients begin requesting shorter certificates
+and rotating them more often due to the reduced lifespan.
 
 ###### Will enabling / using this feature result in introducing new API types?
 
-<!--
-Describe them, providing:
-  - API type
-  - Supported number of objects per cluster
-  - Supported number of objects per namespace (for namespace-scoped objects)
--->
+N/A
 
 ###### Will enabling / using this feature result in any new calls to the cloud provider?
 
-<!--
-Describe them, providing:
-  - Which API(s):
-  - Estimated increase:
--->
+N/A
 
 ###### Will enabling / using this feature result in increasing size or count of the existing API objects?
 
-<!--
-Describe them, providing:
-  - API type(s):
-  - Estimated increase in size: (e.g., new annotation of size 32B)
-  - Estimated amount of new objects: (e.g., new Object X for every existing Pod)
--->
+1. The `spec.expirationSeconds` will increase the size of CSR objects by 32 bits
+2. Many short lived CSR objects will be created if clients request very short
+   durations.  These will be automatically garbage collected via a pre-existing
+   controller once the issued certificate has expired or after one hour,
+   whichever is shorter.
 
 ###### Will enabling / using this feature result in increasing time taken by any operations covered by existing SLIs/SLOs?
 
-<!--
-Look at the [existing SLIs/SLOs].
-
-Think about adding additional work or introducing new steps in between
-(e.g. need to do X to start a container), etc. Please describe the details.
-
-[existing SLIs/SLOs]: https://git.k8s.io/community/sig-scalability/slos/slos.md#kubernetes-slisslos
--->
+N/A
 
 ###### Will enabling / using this feature result in non-negligible increase of resource usage (CPU, RAM, disk, IO, ...) in any components?
 
-<!--
-Things to keep in mind include: additional in-memory state, additional
-non-trivial computations, excessive access to disks (including increased log
-volume), significant amount of data sent and/or received over network, etc.
-This through this both in small and large cases, again with respect to the
-[supported limits].
-
-[supported limits]: https://git.k8s.io/community//sig-scalability/configs-and-limits/thresholds.md
--->
+If many clients request short lived certificates and rotate them often, the
+Kubernetes controller manager will have an increase in CPU usage due to the extra
+signing operations.  The API server and etcd will see higher CPU and IO to process
+these requests.
 
 ### Troubleshooting
 
