@@ -598,7 +598,7 @@ For each of them, fill in the following information by copying the below templat
 
 ## Implementation History
 
-- 1.22: 2021-06-15: KEP written
+- 1.22: 2021-06-17: KEP written
 
 ## Drawbacks
 
@@ -606,7 +606,13 @@ N/A
 
 ## Alternatives
 
-- TODO custom x509 extension
+An alternative to creating a new field in the Kubernetes CSR REST API would be to
+add an optional but critical x509 extension to the PEM encoded x509 CSR contained
+in the `spec.request` field.  This extension would then serve to communicate the
+desired `expirationSeconds`.  It is unclear what encoding format would be used for
+this extension, perhaps ASN.1 or JSON.  This approach offer no benefits over the
+design presented above, and would likely make it far more difficult to adopt this
+functionality in the Kubernetes ecosystem.
 
 ## Infrastructure Needed (Optional)
 
