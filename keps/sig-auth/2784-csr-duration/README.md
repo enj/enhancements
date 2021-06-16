@@ -128,7 +128,8 @@ structs found in the `k8s.io/api/certificates/v1` and `k8s.io/api/certificates/v
 packages.
 
 A new optional `ExpirationSeconds` field will be added to this struct.  The go
-doc comment describes the behavior of this field.
+doc comment describes the behavior of this field.  A `*uint32` is used because
+the field is optional, must be positive and must not overflow JSON parsers.
 
 ```go
 // CertificateSigningRequestSpec contains the certificate request.
@@ -143,9 +144,16 @@ type CertificateSigningRequestSpec struct {
   // validity duration so a client must check the delta between the notBefore and
   // and notAfter fields in the issued certificate to determine the actual duration.
   //
-  // The in-tree implementations of the well-known Kubernetes signers will honor
-  // this field as long as the requested duration is not later than the maximum
+  // The v1.22+ in-tree implementations of the well-known Kubernetes signers will
+  // honor this field as long as the requested duration is not later than the maximum
   // duration they will honor.
+  //
+  // Certificate signers may not honor this field for various reasons:
+  //
+  //   1. Old signer that is unaware of the field (such as the in-tree
+  //      implementations prior to v1.22)
+  //   2. Signer whose configured maximum is shorter than the requested duration
+  //   3. Signer whose configured minimum is longer than the requested duration
   //
   // The minimum valid value for expirationSeconds is 600, i.e. 10 minutes.
   //
@@ -163,7 +171,9 @@ The name `expirationSeconds` was chosen to match existing art in the token reque
 API.  Similarly, the minimum valid duration was chosen to match the token request
 API as well.  As this is a security related field, individuals may be encouraged
 to set this value to the minimum valid value to maximize security.  Since a certificate
-with a short lifetime will require frequent rotation, `10` minutes seems like an
+with a short lifetime will require frequent rotation before the current certificate
+expires (say at `80%` the lifetime of the certificate given that CSR approval
+and signing is asynchronous which necessitates a buffer), `10` minutes seems like an
 appropriate minimum to prevent accidental DOS against the CSR API.  Furthermore,
 `10` minutes is a short enough lifetime that revocation is not of concern.
 
