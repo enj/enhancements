@@ -178,6 +178,9 @@ and signing is asynchronous which necessitates a buffer), `10` minutes seems lik
 appropriate minimum to prevent accidental DOS against the CSR API.  Furthermore,
 `10` minutes is a short enough lifetime that revocation is not of concern.
 
+TODO spec is immutable after creation, changes are silently dropped
+TODO jordan conversation re: upgrades and downgrades
+
 ### Test Plan
 
 <!--
