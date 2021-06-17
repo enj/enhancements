@@ -72,7 +72,7 @@ private key in a HSM, they may be willing to approve for a longer certificate
 duration.  Signers lack a per-CSR mechanism to control the certificate duration,
 and thus are forced to learn this information out of band.  The built-in signers
 use the same duration for all issued certificates, with the default being a one
-year certificate lifespan (that is irrevocable with rotating the signer).
+year certificate lifespan (that is irrevocable without rotating the signer).
 
 To increase the overall security of the Kubernetes ecosystem and allow clients
 to request a particular duration for issued certificates, we propose extending
@@ -211,7 +211,7 @@ during version skews (discussed below).
 - Feature fully implemented as described in this design
 - Unit tests completed and enabled
 - Integration test completed and enabled
-- [CSR docs](https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests) updated with details about usage of the `expirationSeconds` field
+- [CSR docs](https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests) updated with details about usage of the `spec.expirationSeconds` field
 
 #### GA
 
@@ -257,7 +257,7 @@ the purpose of this design, upgrading other components before the API server is
 of no consequence as it is impossible to set the new field without the API server
 knowing of its existence.
 
-Scenario #1:
+#### Scenario 1:
 
 1. Upgraded API server
 2. Not upgraded (or partially upgraded) controller manager
@@ -267,7 +267,7 @@ In this scenario, the requested `spec.expirationSeconds` may be ignored because
 the controller manger will not understand this field.  This is harmless and
 represents the status quo.
 
-Scenario #2:
+#### Scenario 2:
 
 1. Partially upgraded API server
 2. Upgraded controller manager
@@ -445,6 +445,8 @@ The semantics of the Kubernetes CSR API do not change in this regard.
 N/A
 
 ###### What steps should be taken if SLOs are not being met to determine the problem?
+
+N/A
 
 ## Implementation History
 
