@@ -356,7 +356,7 @@ created.  Audit logging could also be used to determine this.
 ###### How can someone using this feature know that it is working for their instance?
 
 - API `.status`
-  - Condition name: `Approved``=``true`
+  - Condition name: `Approved` `=` `true`
   - Other field:
       Check that the issued certificate in `.status.certificate` has the correct duration
 
