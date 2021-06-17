@@ -220,7 +220,20 @@ are sufficient coverage as the new functionality is optional.
 
 ### Upgrade / Downgrade Strategy
 
-TODO Data durability
+Generally speaking, the slow rollout of new fields and features over multiple
+releases is (at least partially) required to preserve data durability.  That is,
+during upgrade and downgrade scenarios, it is desirable that old and new servers
+interpret the data correctly as defined by the feature being implemented.
+
+In the case of this design, data durability is not of concern as clients, no matter
+what, have to assume that signers may ignore the requested duration completely
+even after they have been updated to understand the field (for example the client
+could request a duration of a month but the signer could truncate the duration to
+its internal maximum of two weeks).  Thus this design emphasizes feature rollout
+speed to aid in ecosystem adoption instead of data durability.  Combined with the
+simplicity of implementation and low risk nature of the proposal, the alpha stage
+and related feature gate have been omitted from this design.
+
 TODO spec is immutable after creation, changes are silently dropped
 TODO jordan conversation re: upgrades and downgrades
 TODO beta no feature gate
