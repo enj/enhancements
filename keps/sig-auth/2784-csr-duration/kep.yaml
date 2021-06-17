@@ -9,9 +9,11 @@ creation-date: 2021-06-15
 reviewers:
   - "@liggitt"
   - "@smarterclayton"
+  - "@mikedanese"
 approvers:
   - "@liggitt"
   - "@smarterclayton"
+  - "@mikedanese"
 
 see-also:
   - "/keps/sig-auth/1513-certificate-signing-request"
