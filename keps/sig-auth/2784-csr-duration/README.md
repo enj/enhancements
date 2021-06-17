@@ -196,7 +196,7 @@ Integration test covering:
 #### Alpha
 
 - This design will start at the beta phase and the functionality will always be enabled
-- There will be no feature gate associated with this design
+- There will be no feature gate associated with this design (discussed below)
 
 This design represents a small, optional change to an existing GA API.  Thus it
 prioritizes rollout speed to allow clients to start using this functionality
@@ -234,23 +234,17 @@ speed to aid in ecosystem adoption instead of data durability.  Combined with th
 simplicity of implementation and low risk nature of the proposal, the alpha stage
 and related feature gate have been omitted from this design.
 
-TODO spec is immutable after creation, changes are silently dropped
-TODO jordan conversation re: upgrades and downgrades
-TODO beta no feature gate
-
-<!--
-If applicable, how will the component be upgraded and downgraded? Make sure
-this is in the test plan.
-
-Consider the following in developing an upgrade/downgrade strategy for this
-enhancement:
-- What changes (in invocations, configurations, API use, etc.) is an existing
-  cluster required to make on upgrade, in order to maintain previous behavior?
-- What changes (in invocations, configurations, API use, etc.) is an existing
-  cluster required to make on upgrade, in order to make use of the enhancement?
-  -->
+Clients that do not set the `spec.expirationSeconds` field will observe no change
+in behavior, even during upgrades and downgrades.
 
 ### Version Skew Strategy
+
+TODO spec is immutable after creation, changes are silently dropped
+TODO jordan conversation re: upgrades and downgrades
+
+[1]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L104-L112
+[2]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L175-L176
+[3]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L297-L298
 
 <!--
 If applicable, how will the component handle version skew with other
