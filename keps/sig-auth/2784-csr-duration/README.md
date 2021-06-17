@@ -271,13 +271,11 @@ Scenario #2:
 3. Upgraded client
 
 In this scenario, the requested `spec.expirationSeconds` may be ignored because
-old API servers will silently drop the field.  This is harmless represents and
-the status quo.
+old API servers will silently drop the field on update.  This is harmless
+represents and the status quo.
 
 The CSR API is resilient to split brain scenarios as unknown fields are silently
 dropped and the `spec` fields are immutable after creation [1][2][3].
-
-TODO jordan conversation re: upgrades and downgrades
 
 [1]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L104-L112
 [2]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L175-L176
