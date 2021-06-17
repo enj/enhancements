@@ -237,7 +237,6 @@ and related feature gate have been omitted from this design.
 TODO spec is immutable after creation, changes are silently dropped
 TODO jordan conversation re: upgrades and downgrades
 TODO beta no feature gate
-TODO note that signers are multi threaded
 
 <!--
 If applicable, how will the component be upgraded and downgraded? Make sure
@@ -409,8 +408,9 @@ N/A
 
 If many clients request short lived certificates and rotate them often, the
 Kubernetes controller manager will have an increase in CPU usage due to the extra
-signing operations.  The API server and etcd will see higher CPU and IO to process
-these requests.
+signing operations.  The signer controllers hosted by KCM are multi-threaded to
+quickly handle bursts of concurrent requests.  The API server and etcd will see
+higher CPU and IO to process these requests.
 
 ### Troubleshooting
 
