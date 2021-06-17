@@ -239,25 +239,49 @@ in behavior, even during upgrades and downgrades.
 
 ### Version Skew Strategy
 
-TODO spec is immutable after creation, changes are silently dropped
+There are three actors we need to consider:
+
+1. API Server
+2. Controller manager
+3. Clients that create CSRs
+
+As noted above, old clients observe no change in behavior, thus we assume for the
+discussion below that all clients have been upgraded and are attempting to set
+the `spec.expirationSeconds` field.
+
+Once the API server is upgraded, clients will be able to set the new field.  For
+the purpose of this design, upgrading other components before the API server is
+of no consequence as it is impossible to set the new field without the API server
+knowing of its existence.
+
+Scenario #1:
+
+1. Upgraded API server
+2. Not upgraded (or partially upgraded) controller manager
+3. Upgraded client
+
+In this scenario, the requested `spec.expirationSeconds` may be ignored because
+the controller manger will not understand this field.  This is harmless and
+represents the status quo.
+
+Scenario #2:
+
+1. Partially upgraded API server
+2. Upgraded controller manager
+3. Upgraded client
+
+In this scenario, the requested `spec.expirationSeconds` may be ignored because
+old API servers will silently drop the field.  This is harmless represents and
+the status quo.
+
+The CSR API is resilient to split brain scenarios as unknown fields are silently
+dropped and the `spec` fields are immutable after creation [1][2][3].
+
 TODO jordan conversation re: upgrades and downgrades
 
 [1]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L104-L112
 [2]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L175-L176
 [3]: https://github.com/kubernetes/kubernetes/blob/24b716673caae31f070b06a337bc12c97ff1d4cb/pkg/registry/certificates/certificates/strategy.go#L297-L298
-
-<!--
-If applicable, how will the component handle version skew with other
-components? What are the guarantees? Make sure this is in the test plan.
-
-Consider the following in developing a version skew strategy for this
-enhancement:
-- Does this enhancement involve coordinating behavior in the control plane and
-  in the kubelet? How does an n-2 kubelet without this feature available behave
-  when this feature is used?
-- Will any other components on the node change? For example, changes to CSI,
-  CRI or CNI may require updating that component before the kubelet.
-  -->
 
 ## Production Readiness Review Questionnaire
 
