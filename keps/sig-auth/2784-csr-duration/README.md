@@ -20,8 +20,8 @@
     - [GA](#ga)
   - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
   - [Version Skew Strategy](#version-skew-strategy)
-    - [Scenario 1:](#scenario-1)
-    - [Scenario 2:](#scenario-2)
+    - [Scenario 1](#scenario-1)
+    - [Scenario 2](#scenario-2)
 - [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
   - [Feature Enablement and Rollback](#feature-enablement-and-rollback)
   - [Rollout, Upgrade and Rollback Planning](#rollout-upgrade-and-rollback-planning)
@@ -259,7 +259,7 @@ the purpose of this design, upgrading other components before the API server is
 of no consequence as it is impossible to set the new field without the API server
 knowing of its existence.
 
-#### Scenario 1:
+#### Scenario 1
 
 1. Upgraded API server
 2. Not upgraded (or partially upgraded) controller manager
@@ -269,7 +269,7 @@ In this scenario, the requested `spec.expirationSeconds` may be ignored because
 the controller manger will not understand this field.  This is harmless and
 represents the status quo.
 
-#### Scenario 2:
+#### Scenario 2
 
 1. Partially upgraded API server
 2. Upgraded controller manager
