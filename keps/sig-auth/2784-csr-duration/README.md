@@ -290,7 +290,7 @@ dropped and the `spec` fields are immutable after creation [1] [2] [3].
 
 ###### How can this feature be enabled / disabled in a live cluster?
 
-- [x] Other
+- Other
   - Describe the mechanism:
       As written above, this functionality will be enabled by default with no configuration options.
   - Will enabling / disabling the feature require downtime of the control
@@ -355,8 +355,8 @@ created.  Audit logging could also be used to determine this.
 
 ###### How can someone using this feature know that it is working for their instance?
 
-- [x] API .status
-  - Condition name: Approved=true
+- API `.status`
+  - Condition name: `Approved``=``true`
   - Other field:
       Check that the issued certificate in `.status.certificate` has the correct duration
 
@@ -367,8 +367,7 @@ API.
 
 ###### What are the SLIs (Service Level Indicators) an operator can use to determine the health of the service?
 
-- [x]
-  - Details: Check the Kubernetes audit log from CRUD operations on CSRs.
+- Details: Check the Kubernetes audit log from CRUD operations on CSRs.
 
 ###### Are there any missing metrics that would be useful to have to improve observability of this feature?
 
@@ -378,19 +377,19 @@ N/A
 
 ###### Does this feature depend on any specific services running in the cluster?
 
-- [API Server]
+- API Server
   - Usage description: hosts the CSR API
     - Impact of its outage on the feature: CSR API will be unavailable
     - Impact of its degraded performance or high-error rates on the feature:
       + Signers may have difficulty issuing certificates
       + Clients may have to wait a long time for certificates to be issued
-- [etcd]
+- etcd
   - Usage description: stores data for the CSR API
     - Impact of its outage on the feature: CSR API will be unavailable
     - Impact of its degraded performance or high-error rates on the feature:
       + Signers may have difficulty issuing certificates
       + Clients may have to wait a long time for certificates to be issued
-- [Kubernetes controller manager]
+- Kubernetes controller manager
   - Usage description: hosts the in-tree signer controllers
     - Impact of its outage on the feature: in-tree signers will be unavailable
     - Impact of its degraded performance or high-error rates on the feature:
