@@ -196,6 +196,7 @@ Unit tests covering:
 1. Validation logic for minimum duration
 2. `pkg/controller/certificates/authority.PermissiveSigningPolicy` updates to handle `expirationSeconds`
 3. Metrics
+4. CSR REST storage ignores `spec.expirationSeconds` when the feature gate is disabled
 
 Integration test covering:
 
@@ -285,7 +286,7 @@ represents the status quo.
 
 In this scenario, the requested `spec.expirationSeconds` may be ignored because
 old API servers will silently drop the field on update.  This is harmless
-represents and the status quo.
+and represents the status quo.
 
 The CSR API is resilient to split brain scenarios as unknown fields are silently
 dropped and the `spec` fields are immutable after creation [1] [2] [3].
@@ -301,7 +302,7 @@ dropped and the `spec` fields are immutable after creation [1] [2] [3].
 ###### How can this feature be enabled / disabled in a live cluster?
 
 - Feature gate
-  - Feature gate name: `CSRDuration`
+  - Feature gate name: `CSRDuration` (enabled by default)
   - Components depending on the feature gate:
     - kube-apiserver
     - kube-controller-manager
@@ -313,13 +314,21 @@ would observe no difference in behavior.
 
 ###### Can the feature be disabled once it has been enabled (i.e. can we roll back the enablement)?
 
-N/A
+Yes, via the the `CSRDuration` feature gate.  Disabling this gate will cause the
+API server to remove the `spec.expirationSeconds` field on `create` and thus all
+clients would have their requested duration ignored.  This is a safe to do as the
+field is optional and represents the status quo.
 
 ###### What happens if we reenable the feature if it was previously rolled back?
 
-N/A
+Clients could set `spec.expirationSeconds` on newly created CSRs and signers may
+choose to honor them.  There are no specific issues caused by repeatedly enabling
+and disabling the feature.
 
 ###### Are there any tests for feature enablement/disablement?
+
+Unit tests will confirm that `spec.expirationSeconds` is ignored when the feature
+gate is disabled.
 
 Unit and integration tests will cover cases where `spec.expirationSeconds` is
 specified and cases where it is left unspecified.
@@ -364,9 +373,6 @@ N/A
 
 ###### How can an operator determine if the feature is in use by workloads?
 
-The `csr_duration_honored` can be used to determine if signers are honoring
-durations when explicitly requested by clients.
-
 Use `kubectl` to determine if CSRs with `spec.expirationSeconds` set are being
 created.  Audit logging could also be used to determine this.
 
@@ -374,12 +380,16 @@ Once a target CSR has been located, check that the issued certificate in
 `.status.certificate` has the correct duration.  Audit logging could also be
 used to determine this.
 
+The `csr_duration_honored` can be used to determine if signers are honoring
+durations when explicitly requested by clients.
+
 ###### How can someone using this feature know that it is working for their instance?
 
 - API `.status`
   - Condition name: `Approved` `=` `true`
   - Other field:
-      Check that the issued certificate in `.status.certificate` has the correct duration
+    - Check that CSR `spec.expirationSeconds` has the correct requested duration
+    - Check that the issued certificate in `.status.certificate` has the correct duration
 
 ###### What are the reasonable SLOs (Service Level Objectives) for the enhancement?
 
@@ -409,17 +419,20 @@ N/A
     - Impact of its degraded performance or high-error rates on the feature:
       + Signers may have difficulty issuing certificates
       + Clients may have to wait a long time for certificates to be issued
+        and their credentials could expire which could cause an outage
 - etcd
   - Usage description: stores data for the CSR API
     - Impact of its outage on the feature: CSR API will be unavailable
     - Impact of its degraded performance or high-error rates on the feature:
       + Signers may have difficulty issuing certificates
       + Clients may have to wait a long time for certificates to be issued
+        and their credentials could expire which could cause an outage
 - Kubernetes controller manager
   - Usage description: hosts the in-tree signer controllers
     - Impact of its outage on the feature: in-tree signers will be unavailable
     - Impact of its degraded performance or high-error rates on the feature:
       + Clients may have to wait a long time for certificates to be issued
+        and their credentials could expire which could cause an outage
 
 ### Scalability
 
@@ -484,6 +497,7 @@ N/A
 ## Implementation History
 
 - 1.22: 2021-06-17: KEP written
+- 1.22: 2021-06-21: KEP review comments addressed
 
 ## Drawbacks
 
