@@ -86,18 +86,21 @@ tags, and then generate with `hack/update-toc.sh`.
   - [ClusterTrustBundle Object](#clustertrustbundle-object)
     - [API Object Definition](#api-object-definition)
     - [Access Control](#access-control)
-    - [Admission Webhook Integration](#admission-webhook-integration)
-    - [Aggregated API Server Integration](#aggregated-api-server-integration)
-  - [trustAnchors Projected Volume Source](#trustanchors-projected-volume-source)
+    - [Well-known ClusterTrustBundles](#well-known-clustertrustbundles)
+    - [Trust Anchor Configuration for Admission and Conversion Webhook Backends](#trust-anchor-configuration-for-admission-and-conversion-webhook-backends)
+    - [Trust Anchor Configuration for Aggregated API Server Backends](#trust-anchor-configuration-for-aggregated-api-server-backends-1)
+  - [pemTrustAnchors Projected Volume Source](#pemtrustanchors-projected-volume-source)
     - [Configuration Object Definition](#configuration-object-definition)
     - [Volume Content Generation and Refresh](#volume-content-generation-and-refresh)
   - [Canarying Changes to a ClusterTrustBundle](#canarying-changes-to-a-clustertrustbundle)
+  - [Revocation](#revocation)
   - [Test Plan](#test-plan)
       - [Prerequisite testing updates](#prerequisite-testing-updates)
       - [Unit tests](#unit-tests)
       - [Integration tests](#integration-tests)
       - [e2e tests](#e2e-tests)
   - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
   - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
   - [Version Skew Strategy](#version-skew-strategy)
 - [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
@@ -110,6 +113,10 @@ tags, and then generate with `hack/update-toc.sh`.
 - [Implementation History](#implementation-history)
 - [Drawbacks](#drawbacks)
 - [Alternatives](#alternatives)
+  - [Do nothing in-tree; solve trust distribution with CRD/CSI driver](#do-nothing-in-tree-solve-trust-distribution-with-crdcsi-driver)
+  - [Use a ConfigMap rather than defining a new type](#use-a-configmap-rather-than-defining-a-new-type)
+  - [Use a TrustAnchorSet (singular) object](#use-a-trustanchorset-singular-object)
+  - [Support for other certificate formats beyond PEM-wrapped DER-formatted X.509](#support-for-other-certificate-formats-beyond-pem-wrapped-der-formatted-x509)
 - [Infrastructure Needed (Optional)](#infrastructure-needed-optional)
 <!-- /toc -->
 
@@ -391,9 +398,7 @@ they are updated, workloads will need to receive the updates fairly quickly
 (within 5 minutes across the whole cluster), to accommodate emergency rotation
 of trust anchors for a private CA.
 
-Security: Should individual trust anchor set entries designate an OSCP endpoint
-to check for certificate revociation?  Or should we require the URL to be
-embedded in the issued certificates?
+Security: see the revocation section below.
 
 ## Design Details
 
@@ -452,6 +457,15 @@ type ClusterTrustBundleSpec struct {
   //
   // The order of certificates within the bundle has no meaning.
   PEMTrustAnchors string `json:"pemTrustAnchors"`
+
+  // This configuration primarily applies to the Kubernetes API server.
+  // By default, all http:// CRLDistributionPoints embedded within the
+  // pemTrustAnchors are fetched and used to perform revocation checks.
+  // Any failure in fetching or verifying these CRLs will result in a
+  // TLS client construction error.  Set this value to true to ignore any
+  // CRLDistributionPoints that cannot be fetched or verified.  Any
+  // remaining CRLs will still be consulted for revocation checks.
+  IgnoreCRLFailures bool `json:"ignoreCRLFailures"`
 }
 ```
 
@@ -651,6 +665,33 @@ bundles for the signer (for example, `example.com--my-signer-v1` and
 updated to refer to the new version, and their health can then be assessed.
 Once the new version is confirmed to work, all applications can be updated to
 point to it.
+
+### Revocation
+
+While it is impossible to enforce that all clients that consume trust bundles perform
+revocation, the Kubernetes API server is well positioned to perform such checks
+since it can easily cache certificate revocation lists.
+
+When the API server parses the bundles within `pemTrustAnchors`, it will extract
+out all `CRLDistributionPoints` that have a `http://` scheme.  These CRLs
+will be fetched and verified, and the serial numbers of revoked certificates will be
+recorded.  If `ignoreCRLFailures` is set to `true`, any `CRLDistributionPoints`
+that cannot initially be fetched or verified will be silently ignored.  The default
+behavior is to fail the construction of the TLS client.
+
+These sets of revoked certificates will be passed to a custom
+`tls.Config.VerifyConnection` function that will check that at least one of the
+chains from `tls.ConnectionState.VerifiedChains` is not revoked.  The API
+server will also periodically fetch updates to these CRLs and any partial failure
+during these fetches will be ignored (only the CRLs that were successfully fetched
+and verified will have their associated set updated).  Note that only the
+`CRLDistributionPoints` included within the `pemTrustAnchors` will be consulted.
+Any `CRLDistributionPoints` included in intermediate or leaf certificates
+that are presented during a TLS handshake will be ignored.  This is to allow the API
+server to build the complete cache upfront and to not have CRL lookups be inline to
+any TLS handshake.  If this limitation is becomes problematic, we can expand the
+`ClusterTrustBundle` API to allow direct specification of `CRLDistributionPoints`
+and their associated verification bundle.
 
 ### Test Plan
 
