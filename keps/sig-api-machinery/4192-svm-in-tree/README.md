@@ -58,7 +58,7 @@ If none of those approvers are still appropriate, then changes to that list
 should be approved by the remaining approvers and/or the owning SIG (or
 SIG Architecture for cross-cutting KEPs).
 -->
-# KEP-NNNN: Moving Storage Version Migrator in-tree
+# KEP-4192: Move Storage Version Migrator in-tree
 
 <!--
 This is the title of your KEP. Keep it short, simple, and descriptive. A good
@@ -211,6 +211,10 @@ know that this has succeeded?
 - Adding logic that relies on the hashed storage versions exposed via the discovery API
 - **[UNCLEAR]** Automated Storage Version Migration via the hash exposed by the `StorageVersion` API
 
+### UNCLEAR Non-Goals
+
+- Automatic storage version migration for CRDs
+
 <!--
 What is out of scope for this KEP? Listing non-goals helps to focus discussion
 and make progress.
@@ -314,6 +318,145 @@ proposal will be implemented, this is the place to discuss them.
         - include `escalate` verb for RBAC
         - include `???` verb for CSR
 
+
+### APIs to move
+#### We will move following APIs in-tree:
+- `v1alpha1` of `storageversionmigrations.migration.k8s.io`  
+
+    ```go
+    // StorageVersionMigration represents a migration of stored data to the latest
+    // storage version.
+    type StorageVersionMigration struct {
+        metav1.TypeMeta `json:",inline"`
+        // +optional
+        metav1.ObjectMeta `json:"metadata,omitempty"`
+        // Specification of the migration.
+        // +optional
+        Spec StorageVersionMigrationSpec `json:"spec,omitempty"`
+        // Status of the migration.
+        // +optional
+        Status StorageVersionMigrationStatus `json:"status,omitempty"`
+    }
+
+    // Spec of the storage version migration.
+    type StorageVersionMigrationSpec struct {
+        // The resource that is being migrated. The migrator sends requests to
+        // the endpoint serving the resource.
+        // Immutable.
+        Resource GroupVersionResource `json:"resource"`
+        // The token used in the list options to get the next chunk of objects
+        // to migrate. When the .status.conditions indicates the migration is
+        // "Running", users can use this token to check the progress of the
+        // migration.
+        // +optional
+        ContinueToken string `json:"continueToken,omitempty"`
+        // TODO: consider recording the storage version hash when the migration
+        // is created. It can avoid races.
+    }
+
+    // The names of the group, the version, and the resource.
+    type GroupVersionResource struct {
+        // The name of the group.
+        Group string `json:"group,omitempty"`
+        // The name of the version.
+        Version string `json:"version,omitempty"`
+        // The name of the resource.
+        Resource string `json:"resource,omitempty"`
+    }
+    
+    // Status of the storage version migration.
+    type StorageVersionMigrationStatus struct {
+        // The latest available observations of the migration's current state.
+        // +optional
+        // +patchMergeKey=type
+        // +patchStrategy=merge
+        Conditions []MigrationCondition `json:"conditions,omitempty"`
+    }
+
+    // Describes the state of a migration at a certain point.
+    type MigrationCondition struct {
+        // Type of the condition.
+        Type MigrationConditionType `json:"type"`
+        // Status of the condition, one of True, False, Unknown.
+        Status corev1.ConditionStatus `json:"status"`
+        // The last time this condition was updated.
+        // +optional
+        LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+        // The reason for the condition's last transition.
+        // +optional
+        Reason string `json:"reason,omitempty"`
+        // A human readable message indicating details about the transition.
+        // +optional
+        Message string `json:"message,omitempty"`
+    }
+
+    type MigrationConditionType string
+
+    const (
+        // Indicates that the migration is running.
+        MigrationRunning MigrationConditionType = "Running"
+        // Indicates that the migration has completed successfully.
+        MigrationSucceeded MigrationConditionType = "Succeeded"
+        // Indicates that the migration has failed.
+        MigrationFailed MigrationConditionType = "Failed"
+    )
+
+    // StorageVersionMigrationList is a collection of storage version migrations.
+    type StorageVersionMigrationList struct {
+        metav1.TypeMeta `json:",inline"`
+        // +optional
+        metav1.ListMeta `json:"metadata,omitempty"`
+        // Items is the list of StorageVersionMigration
+        Items []StorageVersionMigration `json:"items"`
+    }
+    ```
+
+- APIs in-tree will be _converted to `built-in types`_ from CRD.
+
+#### [Undecided] Changes while we move above APIs in-tree:
+To avoid any conflicts with the Storage Version Migrators running out of tree, we will change the _`group`_ from `migration.k8s.io` to `storagemigration.k8s.io`.
+
+The final APIs that will be moved in-tree are:
+- `v1alpha1` of `storageversionmigrations.storagemigration.k8s.io`
+
+### Controller to move
+#### Migrator Controller
+Currently, the Storage Version Migrator comprises two controllers: the `Trigger` controller and the `Migrator` controller. The Trigger controller performs resource discovery, identifying supported resources with the preferred server version every `10 minutes`. Subsequently, the Trigger controller creates the `StorageVersionMigration` resource to initiate the migration process. The Migrator controller then picks up this resource and executes the actual migration.
+
+When transitioning the Storage Version Migrator in-tree, we will exclusively move the Migrator controller as a component of KCM. The creation of the Migration resource will be deferred to the user, instead of being triggered automatically.
+
+#### Streaming List
+Currently, the Migrator controller uses the `chunked List` method to retrieve the list of resources from the API server and subsequently perform storage migrations as needed. However, chunked lists are [resource-intensive]((https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/3157-watch-list/README.md#motivation)) and can lead to a significant overload on the API server, potentially resulting in it being terminated due to out-of-memory (OOM) issues. To address this concern, we have proposed the adoption of an Alpha feature introduced in Kubernetes _v1.27_, known as [`Streaming List`](https://kubernetes.io/docs/reference/using-api/api-concepts/#streaming-lists).
+
+When the Migrator controller is integrated in-tree, it will leverage the `Streaming List` approach to obtain and monitor resources while executing storage version migrations, as opposed to using the resource-intensive `chunked list` method. In cases where, for any reason, the client cannot establish a streaming watch connection with the API server, it will fall back to the standard `chunked list` method, retaining the older LIST/WATCH semantics.
+
+### RBAC for SVM
+- cluster role with `escalte, get, list, watch, update`. and role bind this to Migrator controller's SA.
+- Storage Version Migrator Controller
+    ```yaml
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: system:controller:storage-version-migrator-controller
+    rules:
+    - apiGroups: ["*"]
+      resources: ["*"]
+      verbs: ["get", "list", "watch", "update"]
+      
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: system:controller:storage-version-migrator-controller
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:controller:storage-version-migrator-controller
+    subjects:
+    - kind: ServiceAccount
+      name: storage-version-migrator-controller
+      namespace: kube-system
+    ```
+
 ### Test Plan
 
 <!--
@@ -378,7 +521,7 @@ For Beta and GA, add links to added tests together with links to k8s-triage for 
 https://storage.googleapis.com/k8s-triage/index.html
 -->
 
-- <test>: <link to test coverage>
+- [ ] Write a test which will identify the migratable reousrce, create Migration resource for the same and test whether Sotrage Version Mogration is actually carried out.
 
 ##### e2e tests
 
@@ -392,7 +535,7 @@ https://storage.googleapis.com/k8s-triage/index.html
 We expect no non-infra related flakes in the last month as a GA graduation criteria.
 -->
 
-- <test>: <link to test coverage>
+- [ ] Test to validate funtionality of the Migration controller.
 
 ### Graduation Criteria
 
@@ -457,6 +600,21 @@ in back-to-back releases.
 - Address feedback on usage/changed behavior, provided on GitHub issues
 - Deprecate the flag
 -->
+
+#### Alpha
+
+- Feature implemented behind a feature flag
+- Initial e2e tests completed and enabled
+
+#### Beta
+
+- Feature is enabled by default
+- All of the above documented tests are complete
+
+
+#### GA
+
+- ?
 
 ### Upgrade / Downgrade Strategy
 
@@ -529,9 +687,10 @@ well as the [existing list] of feature gates.
 [existing list]: https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/
 -->
 
-- [ ] Feature gate (also fill in values in `kep.yaml`)
-  - Feature gate name:
+- [x] Feature gate (also fill in values in `kep.yaml`)
+  - Feature gate name: _`enable-storage-version-migrator`_
   - Components depending on the feature gate:
+      - Migration Controller
 - [ ] Other
   - Describe the mechanism:
   - Will enabling / disabling the feature require downtime of the control
@@ -540,6 +699,7 @@ well as the [existing list] of feature gates.
     of a node?
 
 ###### Does enabling the feature change any default behavior?
+No
 
 <!--
 Any change of default behavior may be surprising to users or break existing
@@ -547,6 +707,8 @@ automations, so be extremely careful here.
 -->
 
 ###### Can the feature be disabled once it has been enabled (i.e. can we roll back the enablement)?
+
+Yes
 
 <!--
 Describe the consequences on existing workloads (e.g., if this is a runtime
@@ -561,7 +723,10 @@ NOTE: Also set `disable-supported` to `true` or `false` in `kep.yaml`.
 
 ###### What happens if we reenable the feature if it was previously rolled back?
 
+It should start performing Storage Migration for the given migration request.
+
 ###### Are there any tests for feature enablement/disablement?
+We will add integration tests to validate the enablement/disablement flow.
 
 <!--
 The e2e framework does not currently support enabling or disabling feature
@@ -584,6 +749,8 @@ This section must be completed when targeting beta to a release.
 
 ###### How can a rollout or rollback fail? Can it impact already running workloads?
 
+Storage Version Migration issues no-op Update to API server to restore the resource in etcd with valid storage version. This does not affect any already running workload.
+
 <!--
 Try to be as paranoid as possible - e.g., what if some components will restart
 mid-rollout?
@@ -595,6 +762,7 @@ will rollout across nodes.
 -->
 
 ###### What specific metrics should inform a rollback?
+NA.
 
 <!--
 What signals should users be paying attention to when the feature is young
@@ -602,6 +770,7 @@ that might indicate a serious problem?
 -->
 
 ###### Were upgrade and rollback tested? Was the upgrade->downgrade->upgrade path tested?
+This will be covered by integration tests.
 
 <!--
 Describe manual testing that was done and the outcomes.
@@ -610,6 +779,7 @@ are missing a bunch of machinery and tooling and can't do that now.
 -->
 
 ###### Is the rollout accompanied by any deprecations and/or removals of features, APIs, fields of API types, flags, etc.?
+No.
 
 <!--
 Even if applying deprecation policies, they may still surprise some users.
@@ -625,6 +795,8 @@ previous answers based on experience in the field.
 -->
 
 ###### How can an operator determine if the feature is in use by workloads?
+
+NA.
 
 <!--
 Ideally, this should be a metric. Operations against the Kubernetes API (e.g.,
@@ -646,8 +818,8 @@ Recall that end users cannot usually observe component logs or access metrics.
 - [ ] Events
   - Event Reason: 
 - [ ] API .status
-  - Condition name: 
-  - Other field: 
+  - Condition name: _MigrationCondition.Type (Running | Succeeded | Failed)_
+  - Other field: _MigrationCondition.LastUpdateTime_
 - [ ] Other (treat as last resort)
   - Details:
 
@@ -696,6 +868,8 @@ This section must be completed when targeting beta to a release.
 
 ###### Does this feature depend on any specific services running in the cluster?
 
+No.
+
 <!--
 Think about both cluster-level services (e.g. metrics-server) as well
 as node-level agents (e.g. specific version of CRI). Focus on external or
@@ -725,6 +899,8 @@ previous answers based on experience in the field.
 
 ###### Will enabling / using this feature result in any new API calls?
 
+Yes. Creation of the Migration Request which creates `SotrageVesionMigration` resource. 
+
 <!--
 Describe them, providing:
   - API call type (e.g. PATCH pods)
@@ -740,6 +916,8 @@ Focusing mostly on:
 
 ###### Will enabling / using this feature result in introducing new API types?
 
+No.
+
 <!--
 Describe them, providing:
   - API type
@@ -749,6 +927,8 @@ Describe them, providing:
 
 ###### Will enabling / using this feature result in any new calls to the cloud provider?
 
+No.
+
 <!--
 Describe them, providing:
   - Which API(s):
@@ -756,6 +936,8 @@ Describe them, providing:
 -->
 
 ###### Will enabling / using this feature result in increasing size or count of the existing API objects?
+
+No.
 
 <!--
 Describe them, providing:
@@ -765,6 +947,8 @@ Describe them, providing:
 -->
 
 ###### Will enabling / using this feature result in increasing time taken by any operations covered by existing SLIs/SLOs?
+
+No.
 
 <!--
 Look at the [existing SLIs/SLOs].
@@ -777,6 +961,8 @@ Think about adding additional work or introducing new steps in between
 
 ###### Will enabling / using this feature result in non-negligible increase of resource usage (CPU, RAM, disk, IO, ...) in any components?
 
+Yes. In KCM.
+
 <!--
 Things to keep in mind include: additional in-memory state, additional
 non-trivial computations, excessive access to disks (including increased log
@@ -788,6 +974,8 @@ This through this both in small and large cases, again with respect to the
 -->
 
 ###### Can enabling / using this feature result in resource exhaustion of some node resources (PIDs, sockets, inodes, etc.)?
+
+No.
 
 <!--
 Focus not just on happy cases, but primarily on more pathological cases
@@ -814,6 +1002,8 @@ details). For now, we leave it here.
 
 ###### How does this feature react if the API server and/or etcd is unavailable?
 
+This feature realy on the API server and etcd availability. If they are not available then it will results in errors.
+
 ###### What are other known failure modes?
 
 <!--
@@ -833,6 +1023,8 @@ For each of them, fill in the following information by copying the below templat
 
 ## Implementation History
 
+This feature is already implemented in [out-of-tree](https://github.com/kubernetes-sigs/kube-storage-version-migrator). We are moving this in-tree.
+
 <!--
 Major milestones in the lifecycle of a KEP should be tracked in this section.
 Major milestones might include:
@@ -846,11 +1038,15 @@ Major milestones might include:
 
 ## Drawbacks
 
+NA
+
 <!--
 Why should this KEP _not_ be implemented?
 -->
 
 ## Alternatives
+
+NA
 
 <!--
 What other approaches did you consider, and why did you rule them out? These do
@@ -859,6 +1055,8 @@ information to express the idea and why it was not acceptable.
 -->
 
 ## Infrastructure Needed (Optional)
+
+NA
 
 <!--
 Use this section if you need things from the project/SIG. Examples include a
