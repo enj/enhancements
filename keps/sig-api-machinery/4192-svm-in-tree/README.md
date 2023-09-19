@@ -441,7 +441,11 @@ When the Migrator controller is integrated in-tree, it will leverage the `Stream
     rules:
     - apiGroups: ["*"]
       resources: ["*"]
-      verbs: ["get", "list", "watch", "update"]
+      verbs: 
+      - get 
+      - list
+      - watch
+      - update
       
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
@@ -451,6 +455,42 @@ When the Migrator controller is integrated in-tree, it will leverage the `Stream
       apiGroup: rbac.authorization.k8s.io
       kind: ClusterRole
       name: system:controller:storage-version-migrator-controller
+    subjects:
+    - kind: ServiceAccount
+      name: storage-version-migrator-controller
+      namespace: kube-system
+    ```
+- RBAC resource
+
+    - When we want to migrate resources from `rbac.authorization.k8s.io`, we need to create an escalation to ensure that SVM (Storage Version Migrator) has the appropriate access to perform a no-op update. To achieve this, we will use the following ClusterRole to `escalate` the permissions of the Storage Version Migrator.
+    ```yaml
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: system:controller:storage-version-migrator-controller:escalate
+    rules:
+    - apiGroups:
+      - "rbac.authorization.k8s.io"
+      resources:
+      - clusterroles
+      - roles
+      - clusterrolebinding
+      - rolebinding
+      verbs:
+      - escalate
+      - get 
+      - list
+      - watch
+      - update
+      
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: system:controller:storage-version-migrator-controller:escalate
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:controller:storage-version-migrator-controller:escalate
     subjects:
     - kind: ServiceAccount
       name: storage-version-migrator-controller
@@ -470,7 +510,7 @@ when drafting this test plan.
 [testing-guidelines]: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md
 -->
 
-[ ] I/we understand the owners of the involved components may require updates to
+[x] I/we understand the owners of the involved components may require updates to
 existing tests to make this code solid enough prior to committing the changes necessary
 to implement this enhancement.
 
@@ -611,10 +651,6 @@ in back-to-back releases.
 - Feature is enabled by default
 - All of the above documented tests are complete
 
-
-#### GA
-
-- ?
 
 ### Upgrade / Downgrade Strategy
 
