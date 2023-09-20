@@ -197,7 +197,6 @@ demonstrate the interest in a KEP within the wider Kubernetes community.
 - Make it easy for an admin to trigger a storage migration without having to manually run `kubectl get | kubectl replace`
 - Enable infrastructure providers to use internal details of their enviorment to trigger storage migration (ex: triggering storage migration of Kubernetes secrets when the KMS v2 key ID has changed)
 - Make it easy for existing users of SVM to migrate to the in-tree controller
-- **[UNCLEAR]** Make it easy for Kuberentes developers to drop old API schemas by guaranteeing that storage migration is run automatically on SV hash changes (should this also be on a timer or API server identity?)
 
 <!--
 List the specific goals of the KEP. What is it trying to achieve? How will we
@@ -209,11 +208,12 @@ know that this has succeeded?
 - Any automatic or direct integration with KMS v2
 - Any modification regarding `StorageVersion` API for HA API servers
 - Adding logic that relies on the hashed storage versions exposed via the discovery API
-- **[UNCLEAR]** Automated Storage Version Migration via the hash exposed by the `StorageVersion` API
 
-### UNCLEAR Non-Goals
+### UNCLEAR Goals and/or Non-Goals
 
 - Automatic storage version migration for CRDs
+- Make it easy for Kuberentes developers to drop old API schemas by guaranteeing that storage migration is run automatically on SV hash changes (should this also be on a timer or API server identity?)
+- Automated Storage Version Migration via the hash exposed by the `StorageVersion` API
 
 <!--
 What is out of scope for this KEP? Listing non-goals helps to focus discussion
@@ -225,29 +225,6 @@ and make progress.
 - Move the existing SVM controller logic in-tree into KCM
 - Move the existing SVM REST APIs in-tree (possibly under a new API group to avoid conflicts with the old API being run concurrently)
 - **[UNCLEAR]** Create a new controller that watches the storage version API and automatically triggers migrations based on changes (to the SV API)
-
-
-#### Notes from previous SIG meeting:
-[mo] is there a desire to have something like StorageVersionMigrator built into KCM?
-
-Old related KEPs:
-
-- https://kep.k8s.io/2330
-- https://kep.k8s.io/2339
-- https://kep.k8s.io/2342
-- https://kep.k8s.io/2343
-- https://kep.k8s.io/3166
-
-Storage version API will be getting more attention because of https://kep.k8s.io/4020
-
-- Minimum change to make forward progress
-  - Move SVM logic in tree to KCM
-  - Move APIs in tree as alpha, go through KEP/API review process
-  - Start off by just giving people the ability to rely on it being present as part of the core system that can be used to kick off manual rotation
-  - Move towards the goal of “can guarantee that at version X of kube that no version Y object will still exist in storage”
-    - Could start off with “will attempt a rotation per release”
-  - Maybe we could use API server identity and storage version API to automatically run migration when servers don’t agree
-
 
 <!--
 This is where we get down to the specifics of what the proposal actually is.
@@ -305,22 +282,8 @@ required) or even code snippets. If there's any ambiguity about HOW your
 proposal will be implemented, this is the place to discuss them.
 -->
 
-- All of the REST APIs that will be moved (include the full Go types)
-    - Describe any changes that need to be made
-        - Should the version and/or the group of the API change?
-- Details of each controller loop that will be moved with a description of what it does
-    - Describe the current strategy for how storage migration is run
-    - See if we can use the streaming watch approach to lower the memory impact
-- Describe how we plan to handle RBAC for SVM
-    - Needs broad read and write access to resources
-    - How should we handle resources like RBAC and CSR that have custom checks?
-        - create an aggregated cluster role for SVM
-        - include `escalate` verb for RBAC
-        - include `???` verb for CSR
-
-
 ### APIs to move
-#### We will move following APIs in-tree:
+#### We will move following [APIs](https://github.com/kubernetes-sigs/kube-storage-version-migrator/blob/60dee538334c2366994c2323c0db5db8ab4d2838/pkg/apis/migration/v1alpha1/types.go) in-tree:
 - `v1alpha1` of `storageversionmigrations.migration.k8s.io`  
 
     ```go
@@ -419,8 +382,8 @@ To avoid any conflicts with the Storage Version Migrators running out of tree, w
 The final APIs that will be moved in-tree are:
 - `v1alpha1` of `storageversionmigrations.storagemigration.k8s.io`
 
-### Controller to move
-#### Migrator Controller
+### [Controller](https://github.com/kubernetes-sigs/kube-storage-version-migrator/tree/60dee538334c2366994c2323c0db5db8ab4d2838/pkg/controller) to move
+#### [Migrator Controller](https://github.com/kubernetes-sigs/kube-storage-version-migrator/tree/60dee538334c2366994c2323c0db5db8ab4d2838/pkg/migrator)
 Currently, the Storage Version Migrator comprises two controllers: the `Trigger` controller and the `Migrator` controller. The Trigger controller performs resource discovery, identifying supported resources with the preferred server version every `10 minutes`. Subsequently, the Trigger controller creates the `StorageVersionMigration` resource to initiate the migration process. The Migrator controller then picks up this resource and executes the actual migration.
 
 When transitioning the Storage Version Migrator in-tree, we will exclusively move the Migrator controller as a component of KCM. The creation of the Migration resource will be deferred to the user, instead of being triggered automatically.
@@ -429,9 +392,11 @@ When transitioning the Storage Version Migrator in-tree, we will exclusively mov
 Currently, the Migrator controller uses the `chunked List` method to retrieve the list of resources from the API server and subsequently perform storage migrations as needed. However, chunked lists are [resource-intensive]((https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/3157-watch-list/README.md#motivation)) and can lead to a significant overload on the API server, potentially resulting in it being terminated due to out-of-memory (OOM) issues. To address this concern, we have proposed the adoption of an Alpha feature introduced in Kubernetes _v1.27_, known as [`Streaming List`](https://kubernetes.io/docs/reference/using-api/api-concepts/#streaming-lists).
 
 When the Migrator controller is integrated in-tree, it will leverage the `Streaming List` approach to obtain and monitor resources while executing storage version migrations, as opposed to using the resource-intensive `chunked list` method. In cases where, for any reason, the client cannot establish a streaming watch connection with the API server, it will fall back to the standard `chunked list` method, retaining the older LIST/WATCH semantics.
+    
+- _Open Question_:
+    - Does `Streaming List` support inconsistent lists? Currently, with chunked lists, we receive inconsistent lists. We need to determine if we can achieve the same with Streaming List. Depending on the outcome, we may consider removing the [ContinueToken](https://github.com/kubernetes-sigs/kube-storage-version-migrator/blob/60dee538334c2366994c2323c0db5db8ab4d2838/pkg/apis/migration/v1alpha1/types.go#L63) from the API.
 
 ### RBAC for SVM
-- cluster role with `escalte, get, list, watch, update`. and role bind this to Migrator controller's SA.
 - Storage Version Migrator Controller
     ```yaml
     apiVersion: rbac.authorization.k8s.io/v1
@@ -460,42 +425,6 @@ When the Migrator controller is integrated in-tree, it will leverage the `Stream
       name: storage-version-migrator-controller
       namespace: kube-system
     ```
-- RBAC resource
-
-    - When we want to migrate resources from `rbac.authorization.k8s.io`, we need to create an escalation to ensure that SVM (Storage Version Migrator) has the appropriate access to perform a no-op update. To achieve this, we will use the following ClusterRole to `escalate` the permissions of the Storage Version Migrator.
-    ```yaml
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRole
-    metadata:
-      name: system:controller:storage-version-migrator-controller:escalate
-    rules:
-    - apiGroups:
-      - "rbac.authorization.k8s.io"
-      resources:
-      - clusterroles
-      - roles
-      - clusterrolebinding
-      - rolebinding
-      verbs:
-      - escalate
-      - get 
-      - list
-      - watch
-      - update
-      
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
-    metadata:
-      name: system:controller:storage-version-migrator-controller:escalate
-    roleRef:
-      apiGroup: rbac.authorization.k8s.io
-      kind: ClusterRole
-      name: system:controller:storage-version-migrator-controller:escalate
-    subjects:
-    - kind: ServiceAccount
-      name: storage-version-migrator-controller
-      namespace: kube-system
-    ```
 
 ### Test Plan
 
@@ -510,7 +439,7 @@ when drafting this test plan.
 [testing-guidelines]: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md
 -->
 
-[x] I/we understand the owners of the involved components may require updates to
+- [x] I/we understand the owners of the involved components may require updates to
 existing tests to make this code solid enough prior to committing the changes necessary
 to implement this enhancement.
 
@@ -651,7 +580,6 @@ in back-to-back releases.
 - Feature is enabled by default
 - All of the above documented tests are complete
 
-
 ### Upgrade / Downgrade Strategy
 
 <!--
@@ -724,9 +652,9 @@ well as the [existing list] of feature gates.
 -->
 
 - [x] Feature gate (also fill in values in `kep.yaml`)
-  - Feature gate name: _`enable-storage-version-migrator`_
+  - Feature gate name: _`StorageVersionMigrator`_
   - Components depending on the feature gate:
-      - Migration Controller
+      - Kube Controller Manager (KCM)
 - [ ] Other
   - Describe the mechanism:
   - Will enabling / disabling the feature require downtime of the control
@@ -784,8 +712,7 @@ This section must be completed when targeting beta to a release.
 -->
 
 ###### How can a rollout or rollback fail? Can it impact already running workloads?
-
-Storage Version Migration issues no-op Update to API server to restore the resource in etcd with valid storage version. This does not affect any already running workload.
+This may impact workloads, as issuing too many Storage Version Migration requests can increase the latency on the API server.
 
 <!--
 Try to be as paranoid as possible - e.g., what if some components will restart
@@ -798,7 +725,12 @@ will rollout across nodes.
 -->
 
 ###### What specific metrics should inform a rollback?
-NA.
+The metric `storage_migrator_core_migrator_migrations` with `failed` status can indicate how many failures there are and can help decide if a rollback is required.
+
+The following metrics should not be available if we perform a rollback:
+- storage_migrator_core_migrator_migrated_objects
+- storage_migrator_core_migrator_remaining_objects
+- storage_migrator_core_migrator_migrations
 
 <!--
 What signals should users be paying attention to when the feature is young
@@ -831,8 +763,11 @@ previous answers based on experience in the field.
 -->
 
 ###### How can an operator determine if the feature is in use by workloads?
+The following metrics are available when Storage Version Migration is enabled:
+- storage_migrator_core_migrator_migrated_objects
+- storage_migrator_core_migrator_remaining_objects
+- storage_migrator_core_migrator_migrations
 
-NA.
 
 <!--
 Ideally, this should be a metric. Operations against the Kubernetes API (e.g.,
@@ -854,12 +789,17 @@ Recall that end users cannot usually observe component logs or access metrics.
 - [ ] Events
   - Event Reason: 
 - [ ] API .status
-  - Condition name: _MigrationCondition.Type (Running | Succeeded | Failed)_
-  - Other field: _MigrationCondition.LastUpdateTime_
-- [ ] Other (treat as last resort)
+  - Condition name: **_MigrationCondition.Type (Running | Succeeded | Failed)_**
+  - Other field: **_MigrationCondition.LastUpdateTime_**
+- [x] Other (treat as last resort)
   - Details:
+      -    The following metrics are available when Storage Version Migration is enabled:
+            - storage_migrator_core_migrator_migrated_objects
+            - storage_migrator_core_migrator_remaining_objects
+            - storage_migrator_core_migrator_migrations
 
 ###### What are the reasonable SLOs (Service Level Objectives) for the enhancement?
+NA
 
 <!--
 This is your opportunity to define what "normal" quality of service looks like
@@ -886,8 +826,9 @@ Pick one more of these and delete the rest.
   - Metric name:
   - [Optional] Aggregation method:
   - Components exposing the metric:
-- [ ] Other (treat as last resort)
+- [x] Other (treat as last resort)
   - Details:
+      - The metric `storage_migrator_core_migrator_migrations` with the status `Failed` can be observed to determine the health of the migrations.
 
 ###### Are there any missing metrics that would be useful to have to improve observability of this feature?
 
@@ -952,7 +893,7 @@ Focusing mostly on:
 
 ###### Will enabling / using this feature result in introducing new API types?
 
-No.
+Yes, the Storage Veersion Migration API.
 
 <!--
 Describe them, providing:
@@ -997,7 +938,7 @@ Think about adding additional work or introducing new steps in between
 
 ###### Will enabling / using this feature result in non-negligible increase of resource usage (CPU, RAM, disk, IO, ...) in any components?
 
-Yes. In KCM.
+Yes. In Kube Controller Manager (KCM) and API server.
 
 <!--
 Things to keep in mind include: additional in-memory state, additional
@@ -1011,7 +952,7 @@ This through this both in small and large cases, again with respect to the
 
 ###### Can enabling / using this feature result in resource exhaustion of some node resources (PIDs, sockets, inodes, etc.)?
 
-No.
+Maybe (Not exactly sure how does this affect)
 
 <!--
 Focus not just on happy cases, but primarily on more pathological cases
