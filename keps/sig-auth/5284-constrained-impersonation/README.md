@@ -70,59 +70,85 @@ tags, and then generate with `hack/update-toc.sh`.
 -->
 
 <!-- toc -->
-- [Release Signoff Checklist](#release-signoff-checklist)
-- [Summary](#summary)
-- [Motivation](#motivation)
-  - [Goals](#goals)
-  - [Non-Goals](#non-goals)
-- [Proposal](#proposal)
-  - [Subject Access Review Details](#subject-access-review-details)
-    - [workflow when the feature is enabled](#workflow-when-the-feature-is-enabled)
-  - [User Stories (Optional)](#user-stories-optional)
-    - [Story 1](#story-1)
-    - [Story 2](#story-2)
-  - [Risks and Mitigations](#risks-and-mitigations)
-    - [The verbs with <code>impersonate-on:</code> prefix has been used by other component.](#the-verbs-with-impersonate-on-prefix-has-been-used-by-other-component)
-    - [High request volume leads to high load on authorization chain.](#high-request-volume-leads-to-high-load-on-authorization-chain)
-    - [Delegating permission of impersonating wildcard action or wildcard subjects is not supported](#delegating-permission-of-impersonating-wildcard-action-or-wildcard-subjects-is-not-supported)
-- [Design Details](#design-details)
-  - [Verb <code>impersonate:user-info</code>](#verb-impersonateuser-info)
-    - [Header <code>Impersonate-User</code> is set](#header-impersonate-user-is-set)
-    - [Header <code>Impersonate-Group</code> is set](#header-impersonate-group-is-set)
-    - [Header <code>Impersonate-Uid</code> is set](#header-impersonate-uid-is-set)
-    - [Header with prefix <code>Impersonate-Extra-</code> is set](#header-with-prefix-impersonate-extra--is-set)
-  - [Verb <code>impersonate:serviceaccount</code>](#verb-impersonateserviceaccount)
-  - [Verb <code>impersonate:node</code> and <code>impersonate:scheduled-node</code>](#verb-impersonatenode-and-impersonatescheduled-node)
-  - [Auditing](#auditing)
-  - [Test Plan](#test-plan)
-      - [Prerequisite testing updates](#prerequisite-testing-updates)
-      - [Unit tests](#unit-tests)
-      - [Integration tests](#integration-tests)
-      - [e2e tests](#e2e-tests)
-  - [Graduation Criteria](#graduation-criteria)
-    - [Alpha](#alpha)
-    - [Beta](#beta)
-    - [GA](#ga)
-  - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
-  - [Version Skew Strategy](#version-skew-strategy)
-    - [New kube-apiserver, old <code>impersonate</code> permission](#new-kube-apiserver-old-impersonate-permission)
-    - [Old kube-apiserver, new <code>impersonate-on:</code> and <code>impersonate:</code> permission](#old-kube-apiserver-new-impersonate-on-and-impersonate-permission)
-- [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
-  - [Feature Enablement and Rollback](#feature-enablement-and-rollback)
-  - [Rollout, Upgrade and Rollback Planning](#rollout-upgrade-and-rollback-planning)
-  - [Monitoring Requirements](#monitoring-requirements)
-  - [Dependencies](#dependencies)
-  - [Scalability](#scalability)
-  - [Troubleshooting](#troubleshooting)
-- [Implementation History](#implementation-history)
-- [Drawbacks](#drawbacks)
-- [Alternatives](#alternatives)
-  - [Use <code>impersonate:user-info</code> instead of <code>impersonate:serviceaccount</code> and <code>impersonate:node</code>](#use-impersonateuser-info-instead-of-impersonateserviceaccount-and-impersonatenode)
-  - [Controller participation in SubjectAccessReview for impersonation](#controller-participation-in-subjectaccessreview-for-impersonation)
-  - [Setting a special APIGroup suffix instead of special verb](#setting-a-special-apigroup-suffix-instead-of-special-verb)
-  - [Check permission intersection of impersonator and target user](#check-permission-intersection-of-impersonator-and-target-user)
-  - [Expand RBAC/SAR](#expand-rbacsar)
-    - [Conditional Authorization](#conditional-authorization)
+- [KEP-5284: Constrained Impersonation](#kep-5284-constrained-impersonation)
+  - [Release Signoff Checklist](#release-signoff-checklist)
+  - [Summary](#summary)
+  - [Motivation](#motivation)
+    - [Goals](#goals)
+    - [Non-Goals](#non-goals)
+  - [Proposal](#proposal)
+    - [Subject Access Review Details](#subject-access-review-details)
+      - [workflow when the feature is enabled](#workflow-when-the-feature-is-enabled)
+    - [User Stories (Optional)](#user-stories-optional)
+      - [Story 1](#story-1)
+      - [Story 2](#story-2)
+    - [Risks and Mitigations](#risks-and-mitigations)
+      - [The verbs with `impersonate-on:<mode>:` prefix has been used by other component.](#the-verbs-with-impersonate-onmode-prefix-has-been-used-by-other-component)
+      - [High request volume leads to high load on authorization chain.](#high-request-volume-leads-to-high-load-on-authorization-chain)
+      - [Delegating permission of impersonating wildcard action or wildcard subjects is not supported](#delegating-permission-of-impersonating-wildcard-action-or-wildcard-subjects-is-not-supported)
+  - [Design Details](#design-details)
+    - [Verb `impersonate:user-info`](#verb-impersonateuser-info)
+      - [Header `Impersonate-User` is set](#header-impersonate-user-is-set)
+      - [Header `Impersonate-Group` is set](#header-impersonate-group-is-set)
+      - [Header `Impersonate-Uid` is set](#header-impersonate-uid-is-set)
+      - [Header with prefix `Impersonate-Extra-` is set](#header-with-prefix-impersonate-extra--is-set)
+    - [Verb `impersonate:serviceaccount`](#verb-impersonateserviceaccount)
+    - [Verb `impersonate:arbitrary-node` and `impersonate:associated-node`](#verb-impersonatearbitrary-node-and-impersonateassociated-node)
+    - [Auditing](#auditing)
+    - [Test Plan](#test-plan)
+        - [Prerequisite testing updates](#prerequisite-testing-updates)
+        - [Unit tests](#unit-tests)
+        - [Integration tests](#integration-tests)
+        - [e2e tests](#e2e-tests)
+    - [Graduation Criteria](#graduation-criteria)
+      - [Alpha](#alpha)
+      - [Beta](#beta)
+      - [GA](#ga)
+    - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
+    - [Version Skew Strategy](#version-skew-strategy)
+      - [New kube-apiserver, old `impersonate` permission](#new-kube-apiserver-old-impersonate-permission)
+      - [Old kube-apiserver, new `impersonate-on:<mode>:` and `impersonate:` permission](#old-kube-apiserver-new-impersonate-onmode-and-impersonate-permission)
+  - [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
+    - [Feature Enablement and Rollback](#feature-enablement-and-rollback)
+          - [How can this feature be enabled / disabled in a live cluster?](#how-can-this-feature-be-enabled--disabled-in-a-live-cluster)
+          - [Does enabling the feature change any default behavior?](#does-enabling-the-feature-change-any-default-behavior)
+          - [Can the feature be disabled once it has been enabled (i.e. can we roll back the enablement)?](#can-the-feature-be-disabled-once-it-has-been-enabled-ie-can-we-roll-back-the-enablement)
+          - [What happens if we reenable the feature if it was previously rolled back?](#what-happens-if-we-reenable-the-feature-if-it-was-previously-rolled-back)
+          - [Are there any tests for feature enablement/disablement?](#are-there-any-tests-for-feature-enablementdisablement)
+    - [Rollout, Upgrade and Rollback Planning](#rollout-upgrade-and-rollback-planning)
+          - [How can a rollout or rollback fail? Can it impact already running workloads?](#how-can-a-rollout-or-rollback-fail-can-it-impact-already-running-workloads)
+          - [What specific metrics should inform a rollback?](#what-specific-metrics-should-inform-a-rollback)
+          - [Were upgrade and rollback tested? Was the upgrade-\>downgrade-\>upgrade path tested?](#were-upgrade-and-rollback-tested-was-the-upgrade-downgrade-upgrade-path-tested)
+          - [Is the rollout accompanied by any deprecations and/or removals of features, APIs, fields of API types, flags, etc.?](#is-the-rollout-accompanied-by-any-deprecations-andor-removals-of-features-apis-fields-of-api-types-flags-etc)
+    - [Monitoring Requirements](#monitoring-requirements)
+          - [How can an operator determine if the feature is in use by workloads?](#how-can-an-operator-determine-if-the-feature-is-in-use-by-workloads)
+          - [How can someone using this feature know that it is working for their instance?](#how-can-someone-using-this-feature-know-that-it-is-working-for-their-instance)
+          - [What are the reasonable SLOs (Service Level Objectives) for the enhancement?](#what-are-the-reasonable-slos-service-level-objectives-for-the-enhancement)
+          - [What are the SLIs (Service Level Indicators) an operator can use to determine the health of the service?](#what-are-the-slis-service-level-indicators-an-operator-can-use-to-determine-the-health-of-the-service)
+          - [Are there any missing metrics that would be useful to have to improve observability of this feature?](#are-there-any-missing-metrics-that-would-be-useful-to-have-to-improve-observability-of-this-feature)
+    - [Dependencies](#dependencies)
+          - [Does this feature depend on any specific services running in the cluster?](#does-this-feature-depend-on-any-specific-services-running-in-the-cluster)
+    - [Scalability](#scalability)
+          - [Will enabling / using this feature result in any new API calls?](#will-enabling--using-this-feature-result-in-any-new-api-calls)
+          - [Will enabling / using this feature result in introducing new API types?](#will-enabling--using-this-feature-result-in-introducing-new-api-types)
+          - [Will enabling / using this feature result in any new calls to the cloud provider?](#will-enabling--using-this-feature-result-in-any-new-calls-to-the-cloud-provider)
+          - [Will enabling / using this feature result in increasing size or count of the existing API objects?](#will-enabling--using-this-feature-result-in-increasing-size-or-count-of-the-existing-api-objects)
+          - [Will enabling / using this feature result in increasing time taken by any operations covered by existing SLIs/SLOs?](#will-enabling--using-this-feature-result-in-increasing-time-taken-by-any-operations-covered-by-existing-slisslos)
+          - [Will enabling / using this feature result in non-negligible increase of resource usage (CPU, RAM, disk, IO, ...) in any components?](#will-enabling--using-this-feature-result-in-non-negligible-increase-of-resource-usage-cpu-ram-disk-io--in-any-components)
+          - [Can enabling / using this feature result in resource exhaustion of some node resources (PIDs, sockets, inodes, etc.)?](#can-enabling--using-this-feature-result-in-resource-exhaustion-of-some-node-resources-pids-sockets-inodes-etc)
+    - [Troubleshooting](#troubleshooting)
+          - [How does this feature react if the API server and/or etcd is unavailable?](#how-does-this-feature-react-if-the-api-server-andor-etcd-is-unavailable)
+          - [What are other known failure modes?](#what-are-other-known-failure-modes)
+          - [What steps should be taken if SLOs are not being met to determine the problem?](#what-steps-should-be-taken-if-slos-are-not-being-met-to-determine-the-problem)
+  - [Implementation History](#implementation-history)
+  - [Drawbacks](#drawbacks)
+  - [Alternatives](#alternatives)
+    - [Use `impersonate:user-info` instead of `impersonate:serviceaccount` and `impersonate:arbitrary-node`](#use-impersonateuser-info-instead-of-impersonateserviceaccount-and-impersonatearbitrary-node)
+    - [Controller participation in SubjectAccessReview for impersonation](#controller-participation-in-subjectaccessreview-for-impersonation)
+    - [Setting a special APIGroup suffix instead of special verb](#setting-a-special-apigroup-suffix-instead-of-special-verb)
+    - [Check permission intersection of impersonator and target user](#check-permission-intersection-of-impersonator-and-target-user)
+    - [Expand RBAC/SAR](#expand-rbacsar)
+      - [Conditional Authorization](#conditional-authorization)
 <!-- /toc -->
 
 ## Release Signoff Checklist
@@ -211,12 +237,12 @@ of impersonated user and the requester.
 
 ## Proposal
 
-Introduce a set of verbs with prefix of `impersonate-on:`, e.g. `impersonate-on:create` and
-`impersonate-on:get`. The impersonator needs to have these verbs with certain resources to
+Introduce a set of verbs with prefix of `impersonate-on:<mode>:`, e.g. `impersonate-on:user-info:create` and
+`impersonate-on:arbitrary-node:get`. The impersonator needs to have these verbs with certain resources to
 impersonate. 
 
-Introduce verbs `impersonate:user-info`, `impersonate:serviceaccount`， `impersonate:node` and
-`impersonate:scheduled-node`:
+Introduce verbs `impersonate:user-info`, `impersonate:serviceaccount`， `impersonate:arbitrary-node` and
+`impersonate:associated-node`:
 - `impersonate:user-info` limits the impersonator to impersonate users with 
 certain names/groups/userextras. The resources must be `users`/`groups`/`userextras`/`uids`.
 and the user must not be a node (username with a prefix of `system:node:`) and the user must
@@ -224,10 +250,10 @@ not be a service account (username with a prefix of `system:serviceaccount:`)
 The resource names must be usernames, group names or values in the user extras accoringly.
 - `impersonate:serviceaccount` that limits the impersonator to impersonate the serviceaccount with
 the certain name/namespace. The resource must be `serviceaccounts`.
-- `impersonate:node` that limits the impersonator to impersonate the node only. The resource
+- `impersonate:arbitrary-node` that limits the impersonator to impersonate the node only. The resource
 must be `nodes`, and the resourceName should be the name of the node. The impersonator must have this
 verb to impersonate a node.
-- `impersonate:scheduled-node` that limits the impersonator to impersonate the node the 
+- `impersonate:associated-node` that limits the impersonator to impersonate the node the 
 impersonator is running on. The resources must be `nodes`. For a controller impersonating the node
 that it is running on, it will need to know the node name obtained via downward API:
 ```yaml
@@ -291,8 +317,8 @@ rules:
   resources:
   - pods
   verbs:
-  - impersonate-on:list
-  - impersonate-on:watch
+  - impersonate-on:user-info:list
+  - impersonate-on:user-info:watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -337,7 +363,7 @@ spec:
   resourceAttributes:
     resource: pods
     namespace: default
-    verb: impersonate-on:list
+    verb: impersonate-on:user-info:list
   user: impersonator
 ```
 - Allows the impersonation if the above two conditions are met
@@ -362,8 +388,8 @@ The impersonator does not need the permission for the target action.
 flowchart TD
   A[receive request] -->|feature enabled| B{Identify the target user via impersonation header}
   B --> |Impersonate-User has the prefix of system:node|C{The requester is on the same node}
-  C --> |yes| D{Requester is authorized with impersonate:scheduled-node}
-  C --> |no| E{Requester is authorized with impersonate:node}
+  C --> |yes| D{Requester is authorized with impersonate:associated-node}
+  C --> |no| E{Requester is authorized with impersonate:arbitrary-node}
   D --> |yes| F{Requester is authorized to impersonate the target action}
   D --> |no| E
   E --> |yes| F
@@ -391,23 +417,23 @@ of the controller should have the permissions as below to perform the action:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: impersonate:node
+  name: impersonate:arbitrary-node
 rules:
 - apiGroups:
   - authentication.k8s.io
   resources:
   - nodes
   verbs:
-  - impersonate:scheduled-node
+  - impersonate:associated-node
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: impersonate:node
+  name: impersonate:arbitrary-node
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: impersonate:node
+  name: impersonate:arbitrary-node
 subjects:
 - kind: ServiceAccount
   name: default
@@ -416,24 +442,24 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: impersonate:node:list
+  name: impersonate:arbitrary-node:list
 rules:
 - apiGroups:
   - ""
   resources:
   - pods
   verbs:
-  - impersonate-on:list
-  - impersonate-on:get
+  - impersonate-on:associated-node:list
+  - impersonate-on:associated-node:get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: impersonate:node:list
+  name: impersonate:arbitrary-node:list
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: impersonate:node:list
+  name: impersonate:arbitrary-node:list
 subjects:
 - kind: ServiceAccount
   name: default
@@ -482,7 +508,7 @@ rules:
     resources:
     - virtualmachines/console
     verbs:
-    - impersonate-on:get
+    - impersonate-on:user-info:get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -512,16 +538,16 @@ How will UX be reviewed, and by whom?
 
 Consider including folks who also work outside the SIG or subproject.
 -->
-#### The verbs with `impersonate-on:` prefix has been used by other component.
+#### The verbs with `impersonate-on:<mode>:` prefix has been used by other component.
 
-There is possibility that the verbs with prefix of `impersonate-on:` have been
-used by other component, and been set in Role/ClusterRole. Since `impersonate:<type>`
+There is possibility that the verbs with prefix of `impersonate-on:<mode>:` have been
+used by other component, and been set in Role/ClusterRole. Since `impersonate:<mode>`
 permission is also required for impersonator, the component will not get more
-power when permission of `impersonate-on:` is given.
+power when permission of `impersonate-on:<mode>:` is given.
 
 #### High request volume leads to high load on authorization chain.
 
-For the scheduled node case, it is possible that a high request volume node
+For the associatedet node case, it is possible that a high request volume node
 agent could be constantly performing impersonated requests, each of which would
 add two extra authorization checks. This could put load on the authorization
 chain. Comparing to other alternatives which would also introduce at least
@@ -634,7 +660,7 @@ spec:
   user: impersonator
 ```
 
-### Verb `impersonate:node` and `impersonate:scheduled-node`
+### Verb `impersonate:arbitrary-node` and `impersonate:associated-node`
 
 When the request has the header of `Impersonate-User`, and the value has the prefix of `system:nodes`,
 this verb is checked instead of `impersonate:user-info`. The subjectaccessreview below will be sent
@@ -647,11 +673,11 @@ spec:
     group: authentication.k8s.io
     resource: nodes
     name: someNode
-    verb: impersonate:nodes
+    verb: impersonate:arbitrary-nodes
   user: impersonator
 ```
 
-`impersonate:scheduled-node` is a special verb to check when two conditions are met:
+`impersonate:associated-node` is a special verb to check when two conditions are met:
 1. The impersonator is impersonating a node by setting the header `Impersonate-User` and the value has a prefix
 of `system:node:` on the request.
 2. The user info of the impersonator has an extra with key `authentication.kubernetes.io/node-name`, and the value
@@ -660,7 +686,7 @@ It indicates that the impersonator is running on the same node it is impersonati
 
 The flow for checking these two verbs will be as following:
 1. If condition 1 is not met, verb `impersonate:user-info` will be checked instead.
-2. If both conditions are met, the verb `impersonate:scheduled-node` will be checked at first:
+2. If both conditions are met, the verb `impersonate:associated-node` will be checked at first:
 ```yaml
 apiVersion: authorization.k8s.io/v1
 kind: SubjectAccessReview
@@ -668,10 +694,10 @@ spec:
   resourceAttributes:
     group: authentication.k8s.io
     resource: nodes
-    verb: impersonate:scheduled-node
+    verb: impersonate:associated-node
   user: impersonator
 ```
-3. If check in step 2 is not passed, or only condition 1 is met, the verb impersonate:node will be checked:
+3. If check in step 2 is not passed, or only condition 1 is met, the verb impersonate:arbitrary-node will be checked:
 ```yaml
 apiVersion: authorization.k8s.io/v1
 kind: SubjectAccessReview
@@ -680,17 +706,19 @@ spec:
     group: authentication.k8s.io
     resource: nodes
     name: node1
-    verb: impersonate:node
+    verb: impersonate:arbitrary-node
   user: impersonator
 ```
 
 ### Auditing
 
+TODO check recording for what we decided on!!
+
 Audit events already contain the `impersonatedUser` field to denote if impersonation was used.
 To record the reason why the impersonation is allowed, a field `impersonationConstraint` will
 be added in the `impersonatedUser`. The value will be the impersonation related verbs. For example,
-`impersonate:scheduled-node` indicates that the impersonation request is
-allowed because it impersonates a scheduled node. The specific action such as `list` or `get`
+`impersonate:associated-node` indicates that the impersonation request is
+allowed because it impersonates an associated node. The specific action such as `list` or `get`
 will not be included in the value given it can be inferred from the request itself.
 
 ### Test Plan
@@ -800,10 +828,10 @@ rules:
     - pods
     - pod/exec
     verbs:
-    - impersonate-on:list
-    - impersonate-on:get
+    - impersonate-on:user-info:list
+    - impersonate-on:user-info:get
 ```
-- SAR check on impersonating scheduled node with permissions. The impersonator has the
+- SAR check on impersonating associated node with permissions. The impersonator has the
 user extra info of `"authentication.kubernetes.io/node-name": "node1"`
   - The impersonator can impersonate node1.
   - The impersonator cannot impersonate node2.
@@ -816,14 +844,14 @@ user extra info of `"authentication.kubernetes.io/node-name": "node1"`
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: impersonate-scheduled-node
+  name: impersonate-associated-node
 rules:
 - apiGroups:
   - authentication.k8s.io
   resources:
   - nodes
   verbs:
-  - impersonate:scheduled-node
+  - impersonate:associated-node
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -836,7 +864,7 @@ rules:
     resources:
     - pods
     verbs:
-    - impersonate-on:list
+    - impersonate-on:associated-node:list
 ```
 
 - SAR check on impersonating service account
@@ -847,7 +875,7 @@ Each test should cover positive and negative cases with multiple resources and v
 - Permission delegation:
   - bob has the `impersonate:user-info` permission, and can delegate the `impersonate:user-info`
   permission to alice.
-  - bob cannot delegate the `impersonate:node` permission to alice.
+  - bob cannot delegate the `impersonate:arbitrary-node` permission to alice.
   - bob has the `impersonate:list` permission on pods resource, and can delegate the permission
   to alice.
   - bob cannot delegate the `impersonate:update` permission on pods resource to alice.
@@ -936,7 +964,7 @@ recommended to use the new permissions with less privilege.
 `impersonate:`.
 
 On downgrade to a version that does not enable the feature by default, or if the feature is disabled.
-* No configuration is needed and the permission with `impersonate-on:{verb}` and `impersonate:` verb will be ignored.
+* No configuration is needed and the permission with `impersonate-on:<mode>:<verb>` and `impersonate:` verb will be ignored.
 * request sent to authorization webhooks will no longer include `impersonate-on:` and `impersonate:` verb.
 
 ### Version Skew Strategy
@@ -944,7 +972,7 @@ On downgrade to a version that does not enable the feature by default, or if the
 #### New kube-apiserver, old `impersonate` permission
 The impersonator will still be allowed to impersonate with unscoped permission
 
-#### Old kube-apiserver, new `impersonate-on:` and `impersonate:` permission
+#### Old kube-apiserver, new `impersonate-on:<mode>:` and `impersonate:` permission
 The impersonator will be denied to impersonate. This is safer since the impersonator permission is not enlarged
 with old kube-apiserver.
 
@@ -1356,9 +1384,9 @@ Major milestones might include:
 
 ## Alternatives
 
-### Use `impersonate:user-info` instead of `impersonate:serviceaccount` and `impersonate:node`
+### Use `impersonate:user-info` instead of `impersonate:serviceaccount` and `impersonate:arbitrary-node`
 
-Verb `impersonate:serviceaccount` and `impersonate:node` are special cases of verb
+Verb `impersonate:serviceaccount` and `impersonate:arbitrary-node` are special cases of verb
 `impersonate:user-info`. Without these two verbs, it is still possible to use verb
 `impersonate:user-info` with certain username, e.g. username with the prefix
 `system:serviceaccounts:` or the prerix `system:nodes`. However, providing the two special
@@ -1366,7 +1394,7 @@ verbs would delegation of permissions and support more expressions:
 
 - Verb `impersonate:serviceaccount` can support a permission to allow impersonating any
 serviceaccounts in a certain namespace.
-- Verb `impersonate:node` can support a permission to allow impersonating any node.
+- Verb `impersonate:arbitrary-node` can support a permission to allow impersonating any node.
 
 ### Controller participation in SubjectAccessReview for impersonation
 
@@ -1381,7 +1409,7 @@ is running against the target user.
 
 ### Setting a special APIGroup suffix instead of special verb
 
-Instead of using a verb with prefix `impersonate-on:`, a special apigroup suffix/prefix can be set for
+Instead of using the `impersonate-on:<mode>:<verb>` scheme, a special apigroup suffix/prefix can be set for
 each resource to be impersonated, e.g. setting the apigroup with a suffix of `.impersonation.k8s.io`:
 
 ```yaml
